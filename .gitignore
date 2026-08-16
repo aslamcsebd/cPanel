@@ -1,0 +1,12 @@
+# Sensitive config files
+config.json
+.env
+.env.*
+
+# Logs
+storage/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
