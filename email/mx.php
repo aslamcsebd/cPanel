@@ -16,13 +16,7 @@ $selectedDomain = $_GET['domain'] ?? (reset($domains) ?: '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    if ($action === 'set_mx') {
-        $r = $client->call('Email', 'set_mx', [
-            'domain'     => $_POST['domain'] ?? '',
-            'mxcheck'    => $_POST['mxcheck'] ?? 'auto',
-        ]);
-        $r['success'] ? $msg = 'MX routing updated.' : $err = $r['errors'][0] ?? 'Failed.';
-    } elseif ($action === 'add_mx') {
+    if ($action === 'add_mx') {
         $r = $client->call('Email', 'add_mx', [
             'domain'     => $_POST['domain'] ?? '',
             'exchanger'  => trim($_POST['exchanger'] ?? ''),
@@ -40,9 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $mxResult = $client->call('Email', 'list_mxs', ['domain' => $selectedDomain]);
-$mxData   = $mxResult['data'] ?? [];
-$mxs      = $mxData['mxs'] ?? [];
-$mxcheck  = $mxData['mxcheck'] ?? 'auto';
+$mxEntry  = $mxResult['data'][0] ?? [];
+$mxs      = $mxEntry['entries'] ?? [];
+$mxcheck  = $mxEntry['mxcheck'] ?? 'local';
 
 $pageTitle  = 'MX Records — cPanel Manager';
 $activePage = 'email-mx';
@@ -52,7 +46,7 @@ include '../includes/layout.php';
 <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
   <div>
     <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">MX Records</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">UAPI: Email/list_mxs</p>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage MX records for your domains</p>
   </div>
   <button onclick="document.getElementById('modal-add').classList.remove('hidden')" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
     <i data-lucide="plus" class="h-4 w-4"></i> Add MX Record
@@ -72,18 +66,11 @@ include '../includes/layout.php';
       <?php endforeach; ?>
     </select>
   </form>
-  <form method="POST" class="flex items-center gap-2">
-    <input type="hidden" name="action" value="set_mx" />
-    <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>" />
-    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Email Routing:</label>
-    <select name="mxcheck" class="h-10 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none">
-      <option value="auto" <?= $mxcheck === 'auto' ? 'selected' : '' ?>>Automatically Detect</option>
-      <option value="local" <?= $mxcheck === 'local' ? 'selected' : '' ?>>Local Mail Exchanger</option>
-      <option value="secondary" <?= $mxcheck === 'secondary' ? 'selected' : '' ?>>Backup Mail Exchanger</option>
-      <option value="remote" <?= $mxcheck === 'remote' ? 'selected' : '' ?>>Remote Mail Exchanger</option>
-    </select>
-    <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Save</button>
-  </form>
+  <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium
+    <?= $mxcheck === 'local' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' ?>">
+    <span class="h-1.5 w-1.5 rounded-full <?= $mxcheck === 'local' ? 'bg-green-500' : 'bg-blue-500' ?>"></span>
+    <?= ucfirst($mxcheck) ?> Mail Exchanger
+  </span>
 </div>
 
 <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
@@ -103,12 +90,12 @@ include '../includes/layout.php';
         <?php foreach ($mxs as $mx): ?>
         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
           <td class="px-5 py-3.5 text-sm font-semibold text-gray-900 dark:text-gray-100"><?= htmlspecialchars($mx['priority'] ?? '') ?></td>
-          <td class="px-5 py-3.5 text-sm font-mono text-gray-700 dark:text-gray-300"><?= htmlspecialchars($mx['exchanger'] ?? '') ?></td>
+          <td class="px-5 py-3.5 text-sm font-mono text-gray-700 dark:text-gray-300"><?= htmlspecialchars($mx['mx'] ?? '') ?></td>
           <td class="px-5 py-3.5 text-right">
             <form method="POST" class="inline">
               <input type="hidden" name="action" value="delete_mx" />
               <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>" />
-              <input type="hidden" name="exchanger" value="<?= htmlspecialchars($mx['exchanger'] ?? '') ?>" />
+              <input type="hidden" name="exchanger" value="<?= htmlspecialchars($mx['mx'] ?? '') ?>" />
               <button type="submit" class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-400 hover:bg-red-50"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
             </form>
           </td>
