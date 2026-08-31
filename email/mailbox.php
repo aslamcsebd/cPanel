@@ -52,9 +52,11 @@ foreach ($groupedAccounts as $grp => $emails) {
     if (in_array($currentEmail, $emails)) { $currentGroup = $grp; break; }
 }
 
-$folder  = $_GET['folder']  ?? 'INBOX';
+$folder  = $_GET['folder'] ?? 'INBOX';
 $page    = max(1, (int)($_GET['page'] ?? 1));
 $viewSeq = isset($_GET['msg']) ? (int)$_GET['msg'] : null;
+$search  = trim($_GET['search'] ?? '');
+$msg     = '';
 
 function getImapPass(string $email): ?string {
     if (!empty($_SESSION['imap_credentials'][$email])) return $_SESSION['imap_credentials'][$email];
@@ -81,6 +83,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             header('Location: mailbox.php?account=' . urlencode($saveEmail)); exit;
         } else {
             $err = 'Password incorrect or IMAP connection failed.';
+        }
+    }
+}
+
+// IMAP actions via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['imap_action'])) {
+    $imapPass = getImapPass($currentEmail);
+    if ($imapPass) {
+        $imap      = new ImapClient($currentEmail, $imapPass);
+        $actFolder = $_POST['folder'] ?? 'INBOX';
+        $actSeq    = (int)($_POST['seq'] ?? 0);
+        switch ($_POST['imap_action']) {
+            case 'delete':
+                $imap->deleteMessage($actFolder, $actSeq);
+                header('Location: mailbox.php?account=' . urlencode($currentEmail) . '&folder=' . urlencode($actFolder)); exit;
+            case 'move':
+                $imap->moveMessage($actFolder, $actSeq, $_POST['dest'] ?? 'INBOX.Trash');
+                header('Location: mailbox.php?account=' . urlencode($currentEmail) . '&folder=' . urlencode($actFolder)); exit;
+            case 'flag':
+                $imap->setFlag($actFolder, $actSeq, $_POST['flag'] ?? 'Seen', ($_POST['set'] ?? '1') === '1');
+                header('Location: mailbox.php?account=' . urlencode($currentEmail) . '&folder=' . urlencode($actFolder) . '&msg=' . $actSeq); exit;
+            case 'send':
+                $cfg  = getImapConfig();
+                $pass = getImapPass($currentEmail);
+                $to      = trim($_POST['to'] ?? '');
+                $subject = trim($_POST['subject'] ?? '');
+                $body    = trim($_POST['body'] ?? '');
+                $date    = date('r');
+                $raw  = "From: {$currentEmail}\r\n";
+                $raw .= "To: {$to}\r\n";
+                $raw .= "Subject: {$subject}\r\n";
+                $raw .= "Date: {$date}\r\n";
+                $raw .= "MIME-Version: 1.0\r\n";
+                $raw .= "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
+                $raw .= $body;
+                $r = $imap->sendMail($currentEmail, $to, $subject, $body, $cfg['smtp_host'], $cfg['smtp_port'], $pass);
+                if ($r['success']) {
+                    $imap->appendMessage('INBOX.Sent', $raw);
+                    $msg = 'Email sent.';
+                } else {
+                    $err = 'Send failed: ' . ($r['error'] ?? 'Unknown error');
+                }
+                break;
         }
     }
 }
@@ -133,7 +178,16 @@ if ($currentEmail && $imapCfg['host']) {
             $folders      = $imap->listFolders();
             if (empty($folders)) $folders = ['INBOX', 'INBOX.Sent', 'INBOX.Drafts', 'INBOX.Trash', 'INBOX.Junk'];
             $folderCounts = $imap->getFolderCounts($folders);
-            $mailData     = $imap->getFolderMessages($folder, $page);
+            if ($search) {
+                $seqs    = $imap->searchMessages($folder, $search);
+                $mailData = ['messages' => [], 'total' => count($seqs), 'unseen' => 0];
+                foreach (array_slice(array_reverse($seqs), ($page-1)*20, 20) as $seq) {
+                    $r = $imap->getMessageBySeq($folder, $seq);
+                    if ($r['success']) { $p = $imap->parseRawMessage($r['raw']); $p['seq'] = $seq; $mailData['messages'][] = $p; }
+                }
+            } else {
+                $mailData = $imap->getFolderMessages($folder, $page);
+            }
             if ($viewSeq) {
                 $r = $imap->getMessageBySeq($folder, $viewSeq);
                 if ($r['success']) {
@@ -162,13 +216,23 @@ include '../includes/layout.php';
     <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Mailbox</h1>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">IMAP: <?= htmlspecialchars($imapCfg['host'] ?? 'not configured') ?>:<?= $imapCfg['port'] ?? 993 ?></p>
   </div>
-  <?php if ($isConnected): ?>
-  <span class="inline-flex items-center gap-1.5 rounded-full bg-green-50 dark:bg-green-900/20 px-3 py-1.5 text-xs font-medium text-green-700 dark:text-green-400">
-    <i data-lucide="check-circle" class="h-3.5 w-3.5"></i> <?= htmlspecialchars($currentEmail) ?>
-  </span>
-  <?php endif; ?>
+  <div class="flex items-center gap-2">
+    <?php if ($isConnected): ?>
+    <button onclick="document.getElementById('modal-compose').classList.remove('hidden')" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+      <i data-lucide="pencil" class="h-4 w-4"></i> Compose
+    </button>
+    <span class="inline-flex items-center gap-1.5 rounded-full bg-green-50 dark:bg-green-900/20 px-3 py-1.5 text-xs font-medium text-green-700 dark:text-green-400">
+      <i data-lucide="check-circle" class="h-3.5 w-3.5"></i> <?= htmlspecialchars($currentEmail) ?>
+    </span>
+    <?php endif; ?>
+  </div>
 </div>
 
+<?php if ($msg): ?>
+<div class="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
+  <i data-lucide="check-circle" class="h-4 w-4"></i> <?= htmlspecialchars($msg) ?>
+</div>
+<?php endif; ?>
 <?php if ($err): ?>
 <div class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
   <i data-lucide="alert-circle" class="h-4 w-4"></i> <?= htmlspecialchars($err) ?>
@@ -262,9 +326,15 @@ include '../includes/layout.php';
 
   <!-- Message List -->
   <div class="lg:col-span-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm flex flex-col overflow-hidden" style="min-height:0">
-    <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-      <span class="text-sm font-semibold text-gray-900 dark:text-white"><?= htmlspecialchars($folder === 'INBOX' ? 'Inbox' : str_replace('INBOX.', '', $folder)) ?></span>
-      <span class="text-xs text-gray-400"><?= $mailData['total'] ?> messages</span>
+    <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
+      <span class="text-sm font-semibold text-gray-900 dark:text-white flex-shrink-0"><?= htmlspecialchars($folder === 'INBOX' ? 'Inbox' : str_replace('INBOX.', '', $folder)) ?></span>
+      <form method="get" class="flex-1 flex items-center gap-1">
+        <input type="hidden" name="account" value="<?= htmlspecialchars($currentEmail) ?>">
+        <input type="hidden" name="folder" value="<?= htmlspecialchars($folder) ?>">
+        <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Search..." class="h-7 flex-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-2 text-xs outline-none focus:border-blue-400">
+        <button class="h-7 px-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 hover:bg-gray-200 text-xs"><i data-lucide="search" class="h-3.5 w-3.5"></i></button>
+      </form>
+      <span class="text-xs text-gray-400 flex-shrink-0"><?= $mailData['total'] ?></span>
     </div>
     <div class="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
       <?php if (empty($mailData['messages'])): ?>
@@ -309,19 +379,48 @@ include '../includes/layout.php';
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
       </a>
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-0.5"></div>
-      <a href="?account=<?= urlencode($currentEmail) ?>&folder=<?= urlencode($folder) ?>&msg=<?= $viewSeq ?>&action=reply"
-         class="inline-flex items-center gap-1.5 h-8 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 text-xs font-medium text-white">
+      <!-- Reply -->
+      <button onclick="openReply('<?= htmlspecialchars(addslashes($openMessage['from'])) ?>','<?= htmlspecialchars(addslashes($openMessage['subject'])) ?>')" class="inline-flex items-center gap-1.5 h-8 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 text-xs font-medium text-white">
         <i data-lucide="reply" class="h-3.5 w-3.5"></i> Reply
-      </a>
-      <a href="?account=<?= urlencode($currentEmail) ?>&folder=<?= urlencode($folder) ?>&msg=<?= $viewSeq ?>&action=forward"
-         class="inline-flex items-center gap-1.5 h-8 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 px-3 text-xs font-medium text-gray-700 dark:text-gray-200">
+      </button>
+      <!-- Forward -->
+      <button onclick="openForward('<?= htmlspecialchars(addslashes($openMessage['subject'])) ?>','<?= htmlspecialchars(addslashes($openMessage['body'] ?? '')) ?>')" class="inline-flex items-center gap-1.5 h-8 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 px-3 text-xs font-medium text-gray-700 dark:text-gray-200">
         <i data-lucide="forward" class="h-3.5 w-3.5"></i> Forward
-      </a>
-      <a href="?account=<?= urlencode($currentEmail) ?>&folder=<?= urlencode($folder) ?>&msg=<?= $viewSeq ?>&action=delete"
-         class="inline-flex items-center gap-1.5 h-8 rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-gray-700 hover:bg-red-50 px-3 text-xs font-medium text-red-600 dark:text-red-400"
-         onclick="return confirm('Move to trash?')">
-        <i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Delete
-      </a>
+      </button>
+      <!-- Mark read/unread -->
+      <form method="POST" class="inline">
+        <input type="hidden" name="imap_action" value="flag">
+        <input type="hidden" name="folder" value="<?= htmlspecialchars($folder) ?>">
+        <input type="hidden" name="seq" value="<?= $viewSeq ?>">
+        <input type="hidden" name="flag" value="Seen">
+        <input type="hidden" name="set" value="0">
+        <button type="submit" class="inline-flex items-center gap-1.5 h-8 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 px-3 text-xs font-medium text-gray-700 dark:text-gray-200" title="Mark Unread">
+          <i data-lucide="mail" class="h-3.5 w-3.5"></i>
+        </button>
+      </form>
+      <!-- Move to folder -->
+      <form method="POST" class="inline flex items-center gap-1">
+        <input type="hidden" name="imap_action" value="move">
+        <input type="hidden" name="folder" value="<?= htmlspecialchars($folder) ?>">
+        <input type="hidden" name="seq" value="<?= $viewSeq ?>">
+        <select name="dest" onchange="this.form.submit()" class="h-8 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 text-xs outline-none">
+          <option value="">Move to...</option>
+          <?php foreach ($folders as $f): ?>
+          <?php if ($f !== $folder): ?>
+          <option value="<?= htmlspecialchars($f) ?>"><?= htmlspecialchars($f === 'INBOX' ? 'Inbox' : str_replace('INBOX.', '', $f)) ?></option>
+          <?php endif; ?>
+          <?php endforeach; ?>
+        </select>
+      </form>
+      <!-- Delete -->
+      <form method="POST" class="inline" onsubmit="return confirm('Move to trash?')">
+        <input type="hidden" name="imap_action" value="delete">
+        <input type="hidden" name="folder" value="<?= htmlspecialchars($folder) ?>">
+        <input type="hidden" name="seq" value="<?= $viewSeq ?>">
+        <button type="submit" class="inline-flex items-center gap-1.5 h-8 rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-gray-700 hover:bg-red-50 px-3 text-xs font-medium text-red-600 dark:text-red-400">
+          <i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Delete
+        </button>
+      </form>
     </div>
     <div class="flex-1 overflow-y-auto p-5">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3"><?= htmlspecialchars($openMessage['subject']) ?></h2>
@@ -395,12 +494,58 @@ include '../includes/layout.php';
 </div>
 <?php endif; ?>
 
+<!-- Compose Modal -->
+<div id="modal-compose" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+  <div class="fixed inset-0 bg-black/60" onclick="document.getElementById('modal-compose').classList.add('hidden')"></div>
+  <div class="relative z-50 w-full max-w-2xl mx-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-700">
+      <h3 id="compose-title" class="text-sm font-semibold text-gray-900 dark:text-white">New Message</h3>
+      <button onclick="document.getElementById('modal-compose').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="h-5 w-5"></i></button>
+    </div>
+    <form method="POST" class="p-5 space-y-3">
+      <input type="hidden" name="imap_action" value="send">
+      <div>
+        <input type="text" value="<?= htmlspecialchars($currentEmail) ?>" readonly class="h-9 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 text-sm text-gray-500 dark:text-gray-400 outline-none cursor-not-allowed">
+      </div>
+      <div>
+        <input type="email" name="to" id="compose-to" placeholder="To" required class="h-9 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400">
+      </div>
+      <div>
+        <input type="text" name="subject" id="compose-subject" placeholder="Subject" class="h-9 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400">
+      </div>
+      <div>
+        <textarea name="body" id="compose-body" rows="10" placeholder="Write your message..." class="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none"></textarea>
+      </div>
+      <div class="flex justify-between">
+        <button type="button" onclick="document.getElementById('modal-compose').classList.add('hidden')" class="rounded-lg border border-gray-200 dark:border-gray-600 px-4 py-2 text-sm text-gray-600 dark:text-gray-300">Cancel</button>
+        <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+          <i data-lucide="send" class="h-4 w-4"></i> Send
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 const _emailGroups = <?= $groupedJson ?>;
 function filterEmails(targetId, group) {
     const sel = document.getElementById(targetId);
     const emails = _emailGroups[group] || [];
     sel.innerHTML = emails.map(e => `<option value="${e}">${e}</option>`).join('');
+}
+function openReply(from, subject) {
+    document.getElementById('compose-title').textContent = 'Reply';
+    document.getElementById('compose-to').value = from;
+    document.getElementById('compose-subject').value = subject.startsWith('Re:') ? subject : 'Re: ' + subject;
+    document.getElementById('compose-body').value = '';
+    document.getElementById('modal-compose').classList.remove('hidden');
+}
+function openForward(subject, body) {
+    document.getElementById('compose-title').textContent = 'Forward';
+    document.getElementById('compose-to').value = '';
+    document.getElementById('compose-subject').value = subject.startsWith('Fwd:') ? subject : 'Fwd: ' + subject;
+    document.getElementById('compose-body').value = '\n\n---------- Forwarded message ----------\n' + body;
+    document.getElementById('modal-compose').classList.remove('hidden');
 }
 </script>
 <?php include '../includes/layout_end.php'; ?>

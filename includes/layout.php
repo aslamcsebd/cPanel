@@ -6,10 +6,10 @@ function navLink($href, $icon, $label, $active) {
   $cls = $active
     ? 'flex items-center gap-3 rounded-lg bg-blue-50 dark:bg-blue-900/30 px-3 py-2 text-sm font-medium text-blue-700 dark:text-blue-400'
     : 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white';
-  echo "<a href=\"{$href}\" class=\"{$cls}\"><i data-lucide=\"{$icon}\" class=\"h-4 w-4 flex-shrink-0\"></i>{$label}</a>";
+  echo "<a href=\"{$href}\" class=\"{$cls}\" title=\"{$label}\"><i data-lucide=\"{$icon}\" class=\"h-4 w-4 flex-shrink-0\"></i><span class=\"sidebar-label\">{$label}</span></a>";
 }
 function navSection($label) {
-  echo "<p class=\"px-3 pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500\">{$label}</p>";
+  echo "<p class=\"sidebar-label px-3 pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500\">{$label}</p>";
 }
 function renderSidebar(string $basePath, string $activePage) {
   $items = getSidebarItems();
@@ -27,6 +27,7 @@ function renderSidebar(string $basePath, string $activePage) {
 }
 $p = $activePage ?? '';
 $b = $basePath;
+$sidebarCollapsed = readConfig()['app']['sidebar_collapsed'] ?? false;
 ?>
 <!doctype html>
 <html lang="en" class="">
@@ -43,17 +44,25 @@ $b = $basePath;
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config={darkMode:"class"}</script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .sidebar-collapsed .sidebar-label { display: none; }
+    .sidebar-collapsed nav a { justify-content: center; }
+    .sidebar-collapsed .flex.items-center.gap-3.rounded-lg.px-3 { justify-content: center; }
+  </style>
 </head>
 <body class="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans text-gray-900 dark:text-gray-100">
 
 <div id="sidebar-overlay" class="fixed inset-0 z-20 bg-black/30 hidden lg:hidden" onclick="toggleSidebar()"></div>
 
-<aside id="sidebar" class="fixed inset-y-0 left-0 z-30 w-64 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col -translate-x-full lg:translate-x-0 transition-transform duration-200">
-  <div class="flex h-16 items-center gap-2 border-b border-gray-200 dark:border-gray-700 px-5">
-    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
+<aside id="sidebar" class="fixed inset-y-0 left-0 z-30 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col -translate-x-full lg:translate-x-0 transition-all duration-200 <?= $sidebarCollapsed ? 'w-16 sidebar-collapsed' : 'w-64' ?>">
+  <div class="flex h-16 items-center border-b border-gray-200 dark:border-gray-700 px-3 gap-2">
+    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 flex-shrink-0">
       <i data-lucide="server" class="h-4 w-4 text-white"></i>
     </div>
-    <span class="text-base font-semibold text-gray-900 dark:text-white">cPanel Manager</span>
+    <span class="sidebar-label flex-1 text-base font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden">cPanel Manager</span>
+    <button id="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" class="flex-shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-200" title="Toggle sidebar">
+      <i data-lucide="<?= $sidebarCollapsed ? 'chevron-right' : 'chevron-left' ?>" class="h-4 w-4"></i>
+    </button>
   </div>
   <nav class="flex-1 overflow-y-auto p-3 space-y-0.5">
     <?php renderSidebar($b, $p); ?>
@@ -61,16 +70,16 @@ $b = $basePath;
   <div class="border-t border-gray-200 dark:border-gray-700 p-3">
     <div class="flex items-center gap-3 rounded-lg px-3 py-2">
       <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white text-sm font-semibold flex-shrink-0">A</div>
-      <div class="flex-1 min-w-0">
+      <div class="sidebar-label flex-1 min-w-0">
         <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">Admin</p>
         <p class="text-xs text-gray-500 dark:text-gray-400 truncate">bdvip2.bdixnode.com</p>
       </div>
-      <a href="<?= $b ?>logout.php" title="Logout"><i data-lucide="log-out" class="h-4 w-4 text-gray-400 hover:text-red-500"></i></a>
+      <a href="<?= $b ?>logout.php" title="Logout" class="sidebar-label"><i data-lucide="log-out" class="h-4 w-4 text-gray-400 hover:text-red-500"></i></a>
     </div>
   </div>
 </aside>
 
-<div class="lg:pl-64 min-h-screen">
+<div id="main-content" class="<?= $sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64' ?> min-h-screen transition-all duration-200">
   <header class="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 px-4 backdrop-blur md:px-6">
     <button onclick="toggleSidebar()" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 lg:hidden">
       <i data-lucide="menu" class="h-5 w-5"></i>

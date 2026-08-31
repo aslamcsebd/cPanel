@@ -53,8 +53,10 @@ function getCpanelList(): array {
 function getImapConfig(int $index = -1): array {
     $cp = getCpanelConfig($index);
     return [
-        'host' => $cp['imap_host'] ?? $cp['host'] ?? '',
-        'port' => (int)($cp['imap_port'] ?? 993),
+        'host'      => $cp['imap_host'] ?? $cp['host'] ?? '',
+        'port'      => (int)($cp['imap_port'] ?? 993),
+        'smtp_host' => $cp['smtp_host'] ?? $cp['imap_host'] ?? $cp['host'] ?? '',
+        'smtp_port' => (int)($cp['smtp_port'] ?? 465),
     ];
 }
 

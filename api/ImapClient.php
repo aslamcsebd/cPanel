@@ -101,8 +101,72 @@ class ImapClient {
 
     public function getMessageBySeq(string $folder, int $seq): array {
         $r = $this->curl($this->baseUrl . rawurlencode($folder) . "/;MAILINDEX={$seq}");
-        if (!$r['success']) return ['success' => false, 'error' => $r['error']];
+        if (!$r['success']) return ['success' => false, 'error' => $r['error'] ?? ''];
         return ['success' => true, 'raw' => $r['data']];
+    }
+
+    public function deleteMessage(string $folder, int $seq): bool {
+        $trash = 'INBOX.Trash';
+        $this->curl($this->baseUrl . rawurlencode($folder) . "/;MAILINDEX={$seq}", [
+            CURLOPT_CUSTOMREQUEST => "COPY $seq \"$trash\"",
+        ]);
+        $this->curl($this->baseUrl . rawurlencode($folder) . "/;MAILINDEX={$seq}", [
+            CURLOPT_CUSTOMREQUEST => "STORE $seq +FLAGS (\\Deleted)",
+        ]);
+        $this->curl($this->baseUrl . rawurlencode($folder), [
+            CURLOPT_CUSTOMREQUEST => 'EXPUNGE',
+        ]);
+        return true;
+    }
+
+    public function moveMessage(string $folder, int $seq, string $dest): bool {
+        $this->curl($this->baseUrl . rawurlencode($folder) . "/;MAILINDEX={$seq}", [
+            CURLOPT_CUSTOMREQUEST => "COPY $seq \"$dest\"",
+        ]);
+        $this->curl($this->baseUrl . rawurlencode($folder) . "/;MAILINDEX={$seq}", [
+            CURLOPT_CUSTOMREQUEST => "STORE $seq +FLAGS (\\Deleted)",
+        ]);
+        $this->curl($this->baseUrl . rawurlencode($folder), [
+            CURLOPT_CUSTOMREQUEST => 'EXPUNGE',
+        ]);
+        return true;
+    }
+
+    public function setFlag(string $folder, int $seq, string $flag, bool $set): bool {
+        $cmd = ($set ? '+' : '-') . "FLAGS (\\$flag)";
+        $r = $this->curl($this->baseUrl . rawurlencode($folder) . "/;MAILINDEX={$seq}", [
+            CURLOPT_CUSTOMREQUEST => "STORE $seq $cmd",
+        ]);
+        return $r['success'];
+    }
+
+    public function searchMessages(string $folder, string $query): array {
+        $r = $this->curl($this->baseUrl . rawurlencode($folder), [
+            CURLOPT_CUSTOMREQUEST => 'SEARCH TEXT "' . addslashes($query) . '"',
+        ]);
+        if (!$r['success']) return [];
+        if (preg_match('/\* SEARCH([\d ]*)/i', $r['data'], $m))
+            return array_values(array_filter(array_map('intval', explode(' ', trim($m[1])))));
+        return [];
+    }
+
+    public function appendMessage(string $folder, string $raw): bool {
+        $ch = curl_init($this->baseUrl . rawurlencode($folder));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_USERNAME       => $this->user,
+            CURLOPT_PASSWORD       => $this->pass,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_UPLOAD         => true,
+            CURLOPT_INFILESIZE     => strlen($raw),
+            CURLOPT_READDATA       => fopen('data://text/plain;base64,' . base64_encode($raw), 'r'),
+            CURLOPT_TIMEOUT        => 20,
+        ]);
+        curl_exec($ch);
+        $err = curl_error($ch);
+        curl_close($ch);
+        return empty($err);
     }
 
     public function parseRawMessage(string $raw): array {
@@ -178,6 +242,39 @@ class ImapClient {
         if ($enc === 'base64')           return base64_decode(str_replace(["\r", "\n"], '', $body));
         if ($enc === 'quoted-printable') return quoted_printable_decode($body);
         return $body;
+    }
+
+    public function sendMail(string $from, string $to, string $subject, string $body, string $smtpHost, int $smtpPort, string $smtpPass): array {
+        $boundary = md5(uniqid());
+        $raw  = "From: $from\r\n";
+        $raw .= "To: $to\r\n";
+        $raw .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
+        $raw .= "MIME-Version: 1.0\r\n";
+        $raw .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $raw .= "Content-Transfer-Encoding: base64\r\n\r\n";
+        $raw .= chunk_split(base64_encode($body));
+
+        $ssl  = $smtpPort === 465 ? 'smtps' : 'smtp';
+        $url  = "{$ssl}://{$smtpHost}:{$smtpPort}";
+        $ch   = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER  => true,
+            CURLOPT_USERNAME        => $from,
+            CURLOPT_PASSWORD        => $smtpPass,
+            CURLOPT_SSL_VERIFYPEER  => false,
+            CURLOPT_SSL_VERIFYHOST  => false,
+            CURLOPT_MAIL_FROM       => "<$from>",
+            CURLOPT_MAIL_RCPT       => ["<$to>"],
+            CURLOPT_READDATA        => fopen('data://text/plain,' . urlencode($raw), 'r'),
+            CURLOPT_UPLOAD          => true,
+            CURLOPT_TIMEOUT         => 20,
+        ]);
+        $err = curl_error($ch);
+        curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        if ($err) return ['success' => false, 'error' => $err];
+        return ['success' => true];
     }
 
     public function decodeMimeHeader(string $str): string {

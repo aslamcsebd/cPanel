@@ -1,9 +1,32 @@
-// Sidebar toggle
+// Sidebar toggle (mobile)
 function toggleSidebar() {
   const s = document.getElementById('sidebar');
   const o = document.getElementById('sidebar-overlay');
   s.classList.toggle('-translate-x-full');
   o.classList.toggle('hidden');
+}
+
+// Sidebar collapse (desktop)
+function toggleSidebarCollapse() {
+  const sidebar = document.getElementById('sidebar');
+  const main = document.getElementById('main-content');
+  const btn = document.getElementById('sidebar-collapse-btn');
+  const collapsed = sidebar.classList.toggle('sidebar-collapsed');
+
+  sidebar.classList.toggle('w-64', !collapsed);
+  sidebar.classList.toggle('w-16', collapsed);
+  main.classList.toggle('lg:pl-64', !collapsed);
+  main.classList.toggle('lg:pl-16', collapsed);
+
+  const icon = btn.querySelector('i');
+  icon.setAttribute('data-lucide', collapsed ? 'chevron-right' : 'chevron-left');
+  if (window.lucide) lucide.createIcons();
+
+  fetch(APP_BASE + '/api/save_sidebar.php', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'collapsed=' + collapsed
+  });
 }
 
 // Close dropdowns on outside click

@@ -26,6 +26,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $result     = $client->call('Email', 'list_forwarders');
 $forwarders = $result['data'] ?? [];
 
+$perPage = 10;
+$totalForwarders = count($forwarders);
+$totalPages = max(1, (int)ceil($totalForwarders / $perPage));
+$page = max(1, min($totalPages, (int)($_GET['page'] ?? 1)));
+$offset = ($page - 1) * $perPage;
+$pagedForwarders = array_slice($forwarders, $offset, $perPage);
+
 $domainsResult = $client->call('DomainInfo', 'list_domains');
 $domains = array_filter(array_merge(
     [$domainsResult['data']['main_domain'] ?? ''],
@@ -61,10 +68,10 @@ include '../includes/layout.php';
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-        <?php if (empty($forwarders)): ?>
+        <?php if (empty($pagedForwarders)): ?>
         <tr><td colspan="3" class="px-5 py-8 text-center text-sm text-gray-400">No forwarders found.</td></tr>
         <?php endif; ?>
-        <?php foreach ($forwarders as $f):
+        <?php foreach ($pagedForwarders as $f) {
           $src  = $f['dest'] ?? '';
           $dest = $f['forward'] ?? '';
         ?>
@@ -79,11 +86,41 @@ include '../includes/layout.php';
             </form>
           </td>
         </tr>
-        <?php endforeach; ?>
+        <?php } ?>
       </tbody>
     </table>
   </div>
 </div>
+
+<!-- Pagination -->
+<?php if ($totalPages > 1): ?>
+<div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+  <span class="text-sm text-gray-500 dark:text-gray-400">Showing <?= $offset + 1 ?>–<?= min($offset + $perPage, $totalForwarders) ?> of <?= $totalForwarders ?> forwarders</span>
+  <div class="flex items-center gap-1">
+    <?php if ($page > 1): ?>
+      <a href="?page=1" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="First"><i data-lucide="chevrons-left" class="h-4 w-4 text-gray-500"></i></a>
+      <a href="?page=<?= $page - 1 ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Previous"><i data-lucide="chevron-left" class="h-4 w-4 text-gray-500"></i></a>
+    <?php endif; ?>
+    <?php
+    $start = max(1, $page - 2);
+    $end = min($totalPages, $page + 2);
+    if ($start > 1) echo '<span class="h-8 w-8 flex items-center justify-center text-gray-400">…</span>';
+    for ($i = $start; $i <= $end; $i++):
+    ?>
+      <?php if ($i === $page): ?>
+        <span class="h-8 w-8 rounded bg-blue-600 text-white text-sm font-medium flex items-center justify-center"><?= $i ?></span>
+      <?php else: ?>
+        <a href="?page=<?= $i ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600"><?= $i ?></a>
+      <?php endif; ?>
+    <?php endfor; ?>
+    <?php if ($end < $totalPages) echo '<span class="h-8 w-8 flex items-center justify-center text-gray-400">…</span>'; ?>
+    <?php if ($page < $totalPages): ?>
+      <a href="?page=<?= $page + 1 ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Next"><i data-lucide="chevron-right" class="h-4 w-4 text-gray-500"></i></a>
+      <a href="?page=<?= $totalPages ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Last"><i data-lucide="chevrons-right" class="h-4 w-4 text-gray-500"></i></a>
+    <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- Add Modal -->
 <div id="modal-add" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -99,7 +136,7 @@ include '../includes/layout.php';
         <div class="flex gap-2">
           <input type="text" name="email" placeholder="username" class="flex-1 h-10 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
           <select name="domain" class="h-10 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none">
-            <?php foreach ($domains as $d): ?><option value="<?= htmlspecialchars($d) ?>"><?= htmlspecialchars($d) ?></option><?php endforeach; ?>
+            <?php foreach ($domains as $d): ?><option value="<?= htmlspecialchars($d) ?>">@<?= htmlspecialchars($d) ?></option><?php endforeach; ?>
           </select>
         </div>
       </div>

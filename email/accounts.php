@@ -59,6 +59,17 @@ $domains = array_filter($domains);
 
 $totalAccounts = count($accounts);
 
+$totalUsedBytes = array_sum(array_column($accounts, 'diskused'));
+$totalUsedMB    = round($totalUsedBytes / (1024 * 1024), 1);
+$totalQuotaMB   = array_sum(array_column($accounts, 'quota'));
+$unlimitedCount = count(array_filter($accounts, fn($a) => ($a['quota'] ?? 0) == 0));
+$usagePct       = $totalQuotaMB > 0 ? min(100, round($totalUsedMB / $totalQuotaMB * 100)) : 0;
+$usageBarColor  = $usagePct > 80 ? 'bg-red-500' : ($usagePct > 50 ? 'bg-yellow-500' : 'bg-blue-500');
+$largestBytes   = max(array_column($accounts, 'diskused') ?: [0]);
+$largestAcc     = $largestBytes > 0 ? array_values(array_filter($accounts, fn($a) => ($a['diskused'] ?? 0) === $largestBytes))[0] ?? null : null;
+$largestEmail   = $largestAcc ? ($largestAcc['email'] ?? ($largestAcc['login'] . '@' . $largestAcc['domain'])) : null;
+$largestMB      = round($largestBytes / (1024 * 1024), 1);
+
 // Group by base username
 $_baseCounts = [];
 foreach ($accounts as $a) {
@@ -99,40 +110,54 @@ include '../includes/layout.php';
 <?php if ($err): ?><div class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400 flex items-center gap-2"><i data-lucide="alert-circle" class="h-4 w-4"></i> <?= htmlspecialchars($err) ?></div><?php endif; ?>
 
 <!-- Stats -->
-<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-<?= ($totalUsedMB > 0 ? ($largestEmail ? 3 : 2) : 1) ?>">
   <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
     <div class="flex items-center justify-between h-full">
       <div>
         <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Accounts</p>
         <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= $totalAccounts ?></p>
+        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500"><?= $unlimitedCount ?> unlimited &middot; <?= $totalAccounts - $unlimitedCount ?> with quota</p>
       </div>
       <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30">
         <i data-lucide="mail" class="h-6 w-6 text-blue-600 dark:text-blue-400"></i>
       </div>
     </div>
   </div>
+  <?php if ($totalUsedMB > 0): ?>
   <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
     <div class="flex items-center justify-between h-full">
-      <div>
+      <div class="flex-1 min-w-0 mr-3">
         <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Usage</p>
-        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= round(array_sum(array_column($accounts, 'diskused')) / (1024*1024), 1) ?> <span class="text-sm font-normal text-gray-400">MB</span></p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= $totalUsedMB ?> <span class="text-sm font-normal text-gray-400">MB</span></p>
+        <?php if ($totalQuotaMB > 0): ?>
+        <div class="mt-2 flex items-center gap-2">
+          <div class="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+            <div class="h-full rounded-full <?= $usageBarColor ?>" style="width:<?= $usagePct ?>%"></div>
+          </div>
+          <span class="text-xs text-gray-400"><?= $usagePct ?>%</span>
+        </div>
+        <?php endif; ?>
       </div>
-      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-green-50 dark:bg-green-900/30">
+      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-green-50 dark:bg-green-900/30 flex-shrink-0">
         <i data-lucide="hard-drive" class="h-6 w-6 text-green-600 dark:text-green-400"></i>
       </div>
     </div>
   </div>
-  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full sm:col-span-2 xl:col-span-1">
+  <?php endif; ?>
+  <?php if ($largestEmail): ?>
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
     <div class="flex items-center justify-between h-full">
-      <div>
-        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Domains</p>
-        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= count($domains) ?></p>
+      <div class="flex-1 min-w-0 mr-3">
+        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Largest Mailbox</p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= $largestMB ?> <span class="text-sm font-normal text-gray-400">MB</span></p>
+        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500 truncate" title="<?= htmlspecialchars($largestEmail) ?>"><?= htmlspecialchars($largestEmail) ?></p>
       </div>
-      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30">
-        <i data-lucide="globe-2" class="h-6 w-6 text-indigo-600 dark:text-indigo-400"></i>
+      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-violet-50 dark:bg-violet-900/30 flex-shrink-0">
+        <i data-lucide="inbox" class="h-6 w-6 text-violet-600 dark:text-violet-400"></i>
       </div>
     </div>
   </div>
+  <?php endif; ?>
 </div>
 
 <!-- Group Tabs -->
