@@ -183,7 +183,7 @@ include '../includes/layout.php';
   <!-- Sidebar -->
   <div class="lg:col-span-1 space-y-3">
     <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-3">
-      <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Account</p>
+      <p class="text-xs font-medium text-gray-400 mb-2">Account</p>
       <form method="get" action="" class="space-y-2">
         <select name="account" class="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
           <?php foreach ($allAccounts as $acc): ?>
@@ -195,20 +195,16 @@ include '../includes/layout.php';
           <i data-lucide="plug" class="h-4 w-4"></i> Connect
         </button>
       </form>
-      <?php if ($isConnected): ?>
-      <div class="mt-2 flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
-        <i data-lucide="check-circle" class="h-3.5 w-3.5"></i><span class="truncate">Connected</span>
-      </div>
-      <?php endif; ?>
+
     </div>
 
     <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-3">
-      <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Folders</p>
+      <p class="text-xs font-medium text-gray-400 mb-2">Folders</p>
       <?php
       $folderIcons = ['INBOX'=>'inbox','INBOX.Sent'=>'send','INBOX.Drafts'=>'file-edit','INBOX.Trash'=>'trash-2','INBOX.Junk'=>'alert-triangle','INBOX.spam'=>'alert-triangle','INBOX.Archive'=>'archive'];
       foreach ($folders as $f):
         $icon     = $folderIcons[$f] ?? 'folder';
-        $label    = str_replace('INBOX.', '', $f);
+        $label    = $f === 'INBOX' ? 'Inbox' : str_replace('INBOX.', '', $f);
         $isActive = $f === $folder;
         $fUnseen  = $folderCounts[$f]['unseen'] ?? 0;
         $fTotal   = $folderCounts[$f]['total']  ?? 0;
@@ -230,7 +226,7 @@ include '../includes/layout.php';
   <!-- Message List -->
   <div class="lg:col-span-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm flex flex-col overflow-hidden" style="min-height:0">
     <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-      <span class="text-sm font-semibold text-gray-900 dark:text-white"><?= htmlspecialchars(str_replace('INBOX.', '', $folder)) ?></span>
+      <span class="text-sm font-semibold text-gray-900 dark:text-white"><?= htmlspecialchars($folder === 'INBOX' ? 'Inbox' : str_replace('INBOX.', '', $folder)) ?></span>
       <span class="text-xs text-gray-400"><?= $mailData['total'] ?> messages</span>
     </div>
     <div class="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">

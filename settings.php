@@ -454,6 +454,16 @@ function toggleSection(cb) {
     c.checked = cb.checked;
   });
 }
+function syncCheckAll() {
+  document.querySelectorAll('.sidebar-check-all').forEach(function(cb) {
+    const section = cb.getAttribute('data-section');
+    const container = document.getElementById('sidebar-section-' + section);
+    if (!container) return;
+    const checkboxes = container.querySelectorAll('input[type=checkbox][name^="sidebar_enabled"]');
+    cb.checked = checkboxes.length > 0 && Array.from(checkboxes).every(c => c.checked);
+  });
+}
+syncCheckAll();
 </script>
 
 <?php include 'includes/layout_end.php'; ?>

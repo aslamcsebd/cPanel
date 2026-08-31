@@ -44,7 +44,7 @@ include '../includes/layout.php';
     <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Resource Usage</h1>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">UAPI: Quota/get_quota_info, ResourceUsage/get_usages</p>
   </div>
-  <a href="." class="inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50">
+  <a href="javascript:void(0)" onclick="location.reload()" class="inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50">
     <i data-lucide="refresh-cw" class="h-4 w-4"></i> Refresh
   </a>
 </div>

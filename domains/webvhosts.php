@@ -12,7 +12,7 @@ include '../includes/layout.php';
     <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Virtual Hosts</h1>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">UAPI: WebVhosts/list_domains, WebVhosts/list_ssl_capable_domains</p>
   </div>
-  <button class="inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 transition">
+  <button onclick="location.reload()" class="inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 transition">
     <i data-lucide="refresh-cw" class="h-4 w-4"></i> Refresh
   </button>
 </div>

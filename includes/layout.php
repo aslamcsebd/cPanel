@@ -80,31 +80,29 @@ $b = $basePath;
       <input type="text" placeholder="Search..." class="bg-transparent text-sm text-gray-700 dark:text-gray-200 outline-none placeholder:text-gray-400 w-full" />
     </div>
     <div class="flex items-center gap-2 ml-auto">
-      <span class="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-green-50 dark:bg-green-900/20 px-2.5 py-1 text-xs font-medium text-green-700 dark:text-green-400">
-        <span class="h-1.5 w-1.5 rounded-full bg-green-500"></span> Connected
-      </span>
-      <button id="theme-toggle" onclick="toggleTheme()" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700">
-        <i data-lucide="moon" class="h-5 w-5"></i>
-      </button>
-      <div class="relative" data-dropdown>
-        <button onclick="this.closest('[data-dropdown]').querySelector('[data-dropdown-menu]').classList.toggle('hidden')" class="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700">
-          <i data-lucide="bell" class="h-5 w-5"></i>
-          <span class="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500"></span>
-        </button>
-        <div data-dropdown-menu class="hidden absolute right-0 top-full mt-2 w-72 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-50">
-          <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700"><p class="text-sm font-semibold text-gray-900 dark:text-white">Notifications</p></div>
-          <div class="p-3 space-y-1">
-            <div class="flex gap-3 rounded-lg p-2 hover:bg-gray-50 dark:hover:bg-gray-700">
-              <div class="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-amber-500"></div>
-              <div><p class="text-sm text-gray-800 dark:text-gray-200">SSL expiring soon</p><p class="text-xs text-gray-400">example.com — 7 days left</p></div>
-            </div>
-            <div class="flex gap-3 rounded-lg p-2 hover:bg-gray-50 dark:hover:bg-gray-700">
-              <div class="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-red-500"></div>
-              <div><p class="text-sm text-gray-800 dark:text-gray-200">Disk usage at 85%</p><p class="text-xs text-gray-400">Consider cleaning up files</p></div>
+      <?php if (isCpanelConfigured()): ?>
+        <span class="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-green-50 dark:bg-green-900/20 px-2.5 py-1 text-xs font-medium text-green-700 dark:text-green-400">
+          <span class="h-1.5 w-1.5 rounded-full bg-green-500"></span> Connected
+        </span>
+        <div class="relative" data-dropdown>
+          <button onclick="this.closest('[data-dropdown]').querySelector('[data-dropdown-menu]').classList.toggle('hidden')" class="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700">
+            <i data-lucide="bell" class="h-5 w-5"></i>
+          </button>
+          <div data-dropdown-menu class="hidden absolute right-0 top-full mt-2 w-72 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-50">
+            <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700"><p class="text-sm font-semibold text-gray-900 dark:text-white">Notifications</p></div>
+            <div class="p-3 space-y-1">
+              <p class="text-xs text-gray-400 text-center py-2">All systems operational</p>
             </div>
           </div>
         </div>
-      </div>
+      <?php else: ?>
+        <span class="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+          <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span> Setup Required
+        </span>
+      <?php endif; ?>
+      <button id="theme-toggle" onclick="toggleTheme()" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700">
+        <i data-lucide="moon" class="h-5 w-5"></i>
+      </button>
     </div>
   </header>
   <main class="p-4 md:p-6 space-y-6">
