@@ -41,6 +41,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $zoneResult = $client->call('DNS', 'parse_zone', ['zone' => $selectedDomain]);
 $records    = array_filter($zoneResult['data'] ?? [], fn($r) => !empty($r['type']) && $r['type'] !== 'SOA');
 
+// Pagination
+$perPage = 15;
+$totalRecords = count($records);
+$totalPages = max(1, (int)ceil($totalRecords / $perPage));
+$page = max(1, min($totalPages, (int)($_GET['page'] ?? 1)));
+$offset = ($page - 1) * $perPage;
+$pagedRecords = array_slice($records, $offset, $perPage);
+
+// Count by type
+$typeCounts = [];
+foreach ($records as $rec) {
+    $type = $rec['type'] ?? 'OTHER';
+    $typeCounts[$type] = ($typeCounts[$type] ?? 0) + 1;
+}
+
 $typeColors = [
     'A'     => 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
     'AAAA'  => 'bg-indigo-50 text-indigo-700',
@@ -58,9 +73,9 @@ include '../includes/layout.php';
 <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
   <div>
     <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">DNS Management</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">UAPI: DNS/parse_zone, DNS/mass_edit_zone</p>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage DNS records for your domains</p>
   </div>
-  <button onclick="document.getElementById('modal-add').classList.remove('hidden')" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
+  <button onclick="openAddModal()" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
     <i data-lucide="plus" class="h-4 w-4"></i> Add Record
   </button>
 </div>
@@ -68,18 +83,77 @@ include '../includes/layout.php';
 <?php if ($msg): ?><div class="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-400 flex items-center gap-2"><i data-lucide="check-circle" class="h-4 w-4"></i> <?= htmlspecialchars($msg) ?></div><?php endif; ?>
 <?php if ($err): ?><div class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400 flex items-center gap-2"><i data-lucide="alert-circle" class="h-4 w-4"></i> <?= htmlspecialchars($err) ?></div><?php endif; ?>
 
-<div class="flex items-center gap-3">
-  <form method="GET">
-    <label class="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2">Zone:</label>
-    <select name="domain" onchange="this.form.submit()" class="h-10 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none">
-      <?php foreach ($domains as $d): ?>
-      <option value="<?= htmlspecialchars($d) ?>" <?= $d === $selectedDomain ? 'selected' : '' ?>><?= htmlspecialchars($d) ?></option>
-      <?php endforeach; ?>
-    </select>
-  </form>
+<!-- Domain Selector -->
+<div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-4">
+  <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <i data-lucide="globe" class="h-5 w-5 text-gray-400"></i>
+      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Zone:</span>
+    </div>
+    <div class="flex-1 min-w-0">
+      <select name="domain" onchange="window.location='?domain='+encodeURIComponent(this.value)" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400">
+        <?php foreach ($domains as $d): ?>
+        <option value="<?= htmlspecialchars($d) ?>" <?= $d === $selectedDomain ? 'selected' : '' ?>><?= htmlspecialchars($d) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+  </div>
 </div>
 
+<!-- Stats -->
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
+    <div class="flex items-center justify-between h-full">
+      <div>
+        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Records</p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= $totalRecords ?></p>
+      </div>
+      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30">
+        <i data-lucide="network" class="h-6 w-6 text-blue-600 dark:text-blue-400"></i>
+      </div>
+    </div>
+  </div>
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
+    <div class="flex items-center justify-between h-full">
+      <div>
+        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">A Records</p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= $typeCounts['A'] ?? 0 ?></p>
+      </div>
+      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30">
+        <i data-lucide="globe" class="h-6 w-6 text-indigo-600 dark:text-indigo-400"></i>
+      </div>
+    </div>
+  </div>
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
+    <div class="flex items-center justify-between h-full">
+      <div>
+        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">MX Records</p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= $typeCounts['MX'] ?? 0 ?></p>
+      </div>
+      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/30">
+        <i data-lucide="mail" class="h-6 w-6 text-amber-600 dark:text-amber-400"></i>
+      </div>
+    </div>
+  </div>
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
+    <div class="flex items-center justify-between h-full">
+      <div>
+        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Domains</p>
+        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= count($domains) ?></p>
+      </div>
+      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-green-50 dark:bg-green-900/30">
+        <i data-lucide="globe-2" class="h-6 w-6 text-green-600 dark:text-green-400"></i>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DNS Records Table -->
 <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+  <div class="px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">DNS Records for <?= htmlspecialchars($selectedDomain) ?></h2>
+    <span class="text-xs text-gray-400"><?= $totalRecords ?> total</span>
+  </div>
   <div class="overflow-x-auto">
     <table class="min-w-full divide-y divide-gray-100 dark:divide-gray-700">
       <thead class="bg-gray-50 dark:bg-gray-700/50">
@@ -92,12 +166,12 @@ include '../includes/layout.php';
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-        <?php if (empty($records)): ?>
+        <?php if (empty($pagedRecords)): ?>
         <tr><td colspan="5" class="px-5 py-8 text-center text-sm text-gray-400">No DNS records found.</td></tr>
         <?php endif; ?>
-        <?php foreach ($records as $rec):
+        <?php foreach ($pagedRecords as $rec):
           $type  = $rec['type'] ?? '';
-          $name  = rtrim($rec['dname'] ?? '', '.');
+          $name  = rtrim($rec['dname'] ?? '.', '.');
           $ttl   = $rec['ttl'] ?? '';
           $data  = implode(' ', (array)($rec['data'] ?? []));
           $badge = $typeColors[$type] ?? 'bg-gray-100 text-gray-700';
@@ -125,40 +199,80 @@ include '../includes/layout.php';
   </div>
 </div>
 
+<!-- Pagination -->
+<?php if ($totalPages > 1): ?>
+<div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+  <span class="text-sm text-gray-500 dark:text-gray-400">Showing <?= $offset + 1 ?>–<?= min($offset + $perPage, $totalRecords) ?> of <?= $totalRecords ?> records</span>
+  <div class="flex items-center gap-1">
+    <?php if ($page > 1): ?>
+      <a href="?page=1&domain=<?= urlencode($selectedDomain) ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="First"><i data-lucide="chevrons-left" class="h-4 w-4 text-gray-500"></i></a>
+      <a href="?page=<?= $page - 1 ?>&domain=<?= urlencode($selectedDomain) ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Previous"><i data-lucide="chevron-left" class="h-4 w-4 text-gray-500"></i></a>
+    <?php endif; ?>
+    <?php
+    $start = max(1, $page - 2);
+    $end = min($totalPages, $page + 2);
+    if ($start > 1) echo '<span class="h-8 w-8 flex items-center justify-center text-gray-400">…</span>';
+    for ($i = $start; $i <= $end; $i++):
+    ?>
+      <?php if ($i === $page): ?>
+        <span class="h-8 w-8 rounded bg-blue-600 text-white text-sm font-medium flex items-center justify-center"><?= $i ?></span>
+      <?php else: ?>
+        <a href="?page=<?= $i ?>&domain=<?= urlencode($selectedDomain) ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600"><?= $i ?></a>
+      <?php endif; ?>
+    <?php endfor; ?>
+    <?php if ($end < $totalPages) echo '<span class="h-8 w-8 flex items-center justify-center text-gray-400">…</span>'; ?>
+    <?php if ($page < $totalPages): ?>
+      <a href="?page=<?= $page + 1 ?>&domain=<?= urlencode($selectedDomain) ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Next"><i data-lucide="chevron-right" class="h-4 w-4 text-gray-500"></i></a>
+      <a href="?page=<?= $totalPages ?>&domain=<?= urlencode($selectedDomain) ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Last"><i data-lucide="chevrons-right" class="h-4 w-4 text-gray-500"></i></a>
+    <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
+
 <!-- Add Modal -->
-<div id="modal-add" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-  <div class="w-full max-w-lg rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl">
-    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+<div id="modal-add" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+  <div class="fixed inset-0 bg-black/70" onclick="closeAddModal()"></div>
+  <div class="relative z-50 w-full max-w-lg rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl mx-4">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-t-xl">
       <h3 class="text-base font-semibold text-gray-900 dark:text-white">Add DNS Record</h3>
-      <button onclick="document.getElementById('modal-add').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="h-5 w-5"></i></button>
+      <button onclick="closeAddModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="h-5 w-5"></i></button>
     </div>
-    <form method="POST" class="p-6 grid gap-4 sm:grid-cols-2">
+    <form method="POST" class="p-5 grid gap-3 sm:grid-cols-2">
       <input type="hidden" name="action" value="add" />
       <input type="hidden" name="zone" value="<?= htmlspecialchars($selectedDomain) ?>" />
       <div>
-        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Type</label>
+        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Type</label>
         <select name="type" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none">
           <option>A</option><option>AAAA</option><option>CNAME</option><option>MX</option><option>TXT</option><option>SRV</option>
         </select>
       </div>
       <div>
-        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
         <input type="text" name="name" placeholder="@ or subdomain" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
       </div>
       <div>
-        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">TTL</label>
+        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">TTL</label>
         <input type="number" name="ttl" value="14400" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" />
       </div>
       <div>
-        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Value</label>
+        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Value</label>
         <input type="text" name="value" placeholder="IP or value" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
       </div>
-      <div class="sm:col-span-2 flex justify-end gap-2">
-        <button type="button" onclick="document.getElementById('modal-add').classList.add('hidden')" class="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">Cancel</button>
+      <div class="sm:col-span-2 flex justify-between pt-1">
+        <button type="button" onclick="closeAddModal()" class="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">Cancel</button>
         <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Add Record</button>
       </div>
     </form>
   </div>
 </div>
+
+<script>
+function openAddModal() {
+  document.getElementById('modal-add').classList.remove('hidden');
+}
+function closeAddModal() {
+  document.getElementById('modal-add').classList.add('hidden');
+}
+</script>
 
 <?php include '../includes/layout_end.php'; ?>

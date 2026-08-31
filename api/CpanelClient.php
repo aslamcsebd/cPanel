@@ -101,6 +101,36 @@ class CpanelClient {
         return null;
     }
 
+    public function callApi2(string $module, string $function, array $params = []): array {
+        $url = "https://{$this->host}:{$this->port}/json-api/cpanel?" . http_build_query(array_merge([
+            'cpanel_jsonapi_module'     => $module,
+            'cpanel_jsonapi_func'       => $function,
+            'cpanel_jsonapi_apiversion' => 2,
+        ], $params));
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => ["Authorization: cpanel {$this->username}:{$this->token}"],
+        ]);
+        $response = curl_exec($ch);
+        $error    = curl_error($ch);
+        curl_close($ch);
+
+        if ($error) return $this->fail("cURL error: $error");
+        $data = json_decode($response, true);
+        if (!$data) return $this->fail('Invalid JSON response');
+
+        $result = $data['cpanelresult']['data'][0] ?? [];
+        $ok     = !empty($result['result']) && $result['result'] == 1;
+        return $ok
+            ? ['success' => true,  'data' => $result, 'errors' => [], 'warnings' => []]
+            : ['success' => false, 'data' => [],       'errors' => [$result['reason'] ?? 'API2 call failed'], 'warnings' => []];
+    }
+
     private function fail(string $message, string $duration = '0ms'): array {
         return ['success' => false, 'data' => [], 'errors' => [$message], 'warnings' => [], 'duration' => $duration];
     }
