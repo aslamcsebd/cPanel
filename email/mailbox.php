@@ -15,8 +15,42 @@ $activeCp  = getCpanelConfig($activeIdx);
 $popsResult  = $cpanel->call('Email', 'list_pops');
 $allAccounts = array_map(fn($a) => $a['email'] ?? ($a['login'] . '@' . $a['domain']), $popsResult['data'] ?? []);
 
-$currentEmail = $_GET['account'] ?? $_SESSION['imap_current'] ?? ($allAccounts[0] ?? '');
+$currentEmail = $_GET['account'] ?? $_SESSION['imap_current'] ?? '';
+// If no email selected, pick first account that has a saved password
+if (!$currentEmail) {
+    $config = readConfig();
+    foreach ($allAccounts as $acc) {
+        if (!empty($config['email_passwords'][$acc])) { $currentEmail = $acc; break; }
+    }
+    if (!$currentEmail) $currentEmail = $allAccounts[0] ?? '';
+}
 if ($currentEmail) $_SESSION['imap_current'] = $currentEmail;
+
+// Group by base username (before . _ - or digits), 3+ = own group, else Others
+$_baseCounts = [];
+foreach ($allAccounts as $acc) {
+    $user = strstr($acc, '@', true);
+    $base = strtolower(preg_replace('/[._\-].*$|\d+.*$/', '', $user) ?: $user);
+    $_baseCounts[$base] = ($_baseCounts[$base] ?? 0) + 1;
+}
+$groupedAccounts = ['Others' => []];
+foreach ($allAccounts as $acc) {
+    $user = strstr($acc, '@', true);
+    $base = strtolower(preg_replace('/[._\-].*$|\d+.*$/', '', $user) ?: $user);
+    if ($_baseCounts[$base] >= 3) {
+        $groupedAccounts[ucfirst($base)][] = $acc;
+    } else {
+        $groupedAccounts['Others'][] = $acc;
+    }
+}
+if (empty($groupedAccounts['Others'])) unset($groupedAccounts['Others']);
+else { $tmp = $groupedAccounts['Others']; unset($groupedAccounts['Others']); ksort($groupedAccounts); $groupedAccounts['Others'] = $tmp; }
+
+$groupedJson = json_encode($groupedAccounts, JSON_HEX_TAG);
+$currentGroup = 'Others';
+foreach ($groupedAccounts as $grp => $emails) {
+    if (in_array($currentEmail, $emails)) { $currentGroup = $grp; break; }
+}
 
 $folder  = $_GET['folder']  ?? 'INBOX';
 $page    = max(1, (int)($_GET['page'] ?? 1));
@@ -66,8 +100,16 @@ $openMessage  = null;
 if ($currentEmail && $imapCfg['host']) {
     $imapPass = getImapPass($currentEmail);
 
-    // Auto-provision via cPanel API if no password saved
-    if (!$imapPass) {
+    // Try cPanel master password first if no IMAP password saved
+    if (!$imapPass && !empty($activeCp['cpanel_password'])) {
+        $testImap = new ImapClient($currentEmail, $activeCp['cpanel_password']);
+        if ($testImap->testConnection()) {
+            saveImapPass($currentEmail, $activeCp['cpanel_password']);
+            $imapPass = $activeCp['cpanel_password'];
+        }
+    }
+    // If still no password, reset via cPanel API and save
+    if (!$imapPass && !empty($activeCp['api_token'])) {
         $newPass = 'Cp@' . substr(md5($currentEmail . ($activeCp['cpanel_password'] ?? '')), 0, 12) . '!';
         $ch = curl_init("https://{$activeCp['host']}:{$activeCp['port']}/execute/Email/passwd_pop");
         curl_setopt_array($ch, [
@@ -144,34 +186,24 @@ include '../includes/layout.php';
 </div>
 
 <?php elseif (!$isConnected): ?>
-<div class="max-w-md mx-auto">
+<div class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-5 flex items-start gap-3">
+  <i data-lucide="alert-circle" class="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5"></i>
+  <div class="flex-1">
+    <p class="text-sm font-medium text-red-800 dark:text-red-300">Cannot connect to <strong><?= htmlspecialchars($currentEmail) ?></strong></p>
+    <p class="text-xs text-red-600 dark:text-red-400 mt-1">The master cPanel password didn't work for this account. Enter the correct password below to save it.</p>
+  </div>
+</div>
+<div class="max-w-md mx-auto mt-4">
   <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6">
-    <div class="flex items-center gap-3 mb-5">
-      <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
-        <i data-lucide="mail" class="h-5 w-5 text-blue-600"></i>
-      </div>
-      <div>
-        <h2 class="text-base font-semibold text-gray-900 dark:text-white">Connect Mailbox</h2>
-        <p class="text-xs text-gray-500 dark:text-gray-400">Enter password once — saved securely in config</p>
-      </div>
-    </div>
     <form method="POST" class="space-y-4">
       <input type="hidden" name="action" value="save_pass" />
+      <input type="hidden" name="email" value="<?= htmlspecialchars($currentEmail) ?>" />
       <div>
-        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Email Account</label>
-        <select name="email" onchange="this.form.submit()" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400">
-          <?php foreach ($allAccounts as $acc): ?>
-          <option value="<?= htmlspecialchars($acc) ?>" <?= $acc === $currentEmail ? 'selected' : '' ?>><?= htmlspecialchars($acc) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <div>
-        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Email Password</label>
+        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"><?= htmlspecialchars($currentEmail) ?></label>
         <input type="password" name="password" placeholder="Email account password" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required autofocus />
-        <p class="mt-1 text-xs text-gray-400">Stored in config.json — enter once, never again.</p>
       </div>
       <button type="submit" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 flex items-center justify-center gap-2">
-        <i data-lucide="log-in" class="h-4 w-4"></i> Connect & Save
+        <i data-lucide="log-in" class="h-4 w-4"></i> Save & Connect
       </button>
     </form>
   </div>
@@ -185,8 +217,13 @@ include '../includes/layout.php';
     <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-3">
       <p class="text-xs font-medium text-gray-400 mb-2">Account</p>
       <form method="get" action="" class="space-y-2">
-        <select name="account" class="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <?php foreach ($allAccounts as $acc): ?>
+        <select id="sb-group" onchange="filterEmails('sb-email',this.value)" class="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <?php foreach (array_keys($groupedAccounts) as $grp): ?>
+          <option value="<?= htmlspecialchars($grp) ?>" <?= $grp === $currentGroup ? 'selected' : '' ?>><?= htmlspecialchars($grp) ?> (<?= count($groupedAccounts[$grp]) ?>)</option>
+          <?php endforeach; ?>
+        </select>
+        <select id="sb-email" name="account" class="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <?php foreach ($groupedAccounts[$currentGroup] as $acc): ?>
           <option value="<?= htmlspecialchars($acc) ?>" <?= $acc === $currentEmail ? 'selected' : '' ?>><?= htmlspecialchars($acc) ?></option>
           <?php endforeach; ?>
         </select>
@@ -358,4 +395,12 @@ include '../includes/layout.php';
 </div>
 <?php endif; ?>
 
+<script>
+const _emailGroups = <?= $groupedJson ?>;
+function filterEmails(targetId, group) {
+    const sel = document.getElementById(targetId);
+    const emails = _emailGroups[group] || [];
+    sel.innerHTML = emails.map(e => `<option value="${e}">${e}</option>`).join('');
+}
+</script>
 <?php include '../includes/layout_end.php'; ?>

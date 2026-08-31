@@ -57,12 +57,28 @@ $domains = array_merge(
 );
 $domains = array_filter($domains);
 
-$perPage = 12;
 $totalAccounts = count($accounts);
-$totalPages = max(1, (int)ceil($totalAccounts / $perPage));
-$page = max(1, min($totalPages, (int)($_GET['page'] ?? 1)));
-$offset = ($page - 1) * $perPage;
-$pagedAccounts = array_slice($accounts, $offset, $perPage);
+
+// Group by base username
+$_baseCounts = [];
+foreach ($accounts as $a) {
+    $email = $a['email'] ?? ($a['login'] . '@' . $a['domain']);
+    $user  = strstr($email, '@', true);
+    $base  = strtolower(preg_replace('/[._\-].*$|\d+.*$/', '', $user) ?: $user);
+    $_baseCounts[$base] = ($_baseCounts[$base] ?? 0) + 1;
+}
+$groupedAccounts = [];
+foreach ($accounts as $a) {
+    $email = $a['email'] ?? ($a['login'] . '@' . $a['domain']);
+    $user  = strstr($email, '@', true);
+    $base  = strtolower(preg_replace('/[._\-].*$|\d+.*$/', '', $user) ?: $user);
+    $grp   = $_baseCounts[$base] >= 3 ? ucfirst($base) : 'Others';
+    $groupedAccounts[$grp][] = $a;
+}
+ksort($groupedAccounts);
+if (isset($groupedAccounts['Others'])) {
+    $tmp = $groupedAccounts['Others']; unset($groupedAccounts['Others']); $groupedAccounts['Others'] = $tmp;
+}
 
 $pageTitle  = 'Email Accounts — cPanel Manager';
 $activePage = 'email-accounts';
@@ -119,20 +135,29 @@ include '../includes/layout.php';
   </div>
 </div>
 
+<!-- Group Tabs -->
+<div class="flex flex-wrap gap-2">
+  <?php $firstGrp = array_key_first($groupedAccounts); ?>
+  <?php foreach ($groupedAccounts as $grp => $grpAccounts): ?>
+  <button onclick="switchGroup('<?= htmlspecialchars($grp) ?>')" id="tab-<?= htmlspecialchars($grp) ?>"
+    class="group-tab inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border transition
+    <?= $grp === $firstGrp ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-blue-400' ?>">
+    <?= htmlspecialchars($grp) ?>
+    <span class="rounded-full px-1.5 py-0.5 text-xs <?= $grp === $firstGrp ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' ?>"><?= count($grpAccounts) ?></span>
+  </button>
+  <?php endforeach; ?>
+</div>
+
 <!-- Accounts Cards -->
-<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-  <?php if (empty($pagedAccounts)): ?>
-  <div class="sm:col-span-2 xl:col-span-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-8 text-center text-sm text-gray-400">
-    <i data-lucide="inbox" class="h-8 w-8 mx-auto mb-2 text-gray-300"></i> No email accounts found.
-  </div>
-  <?php endif; ?>
-  <?php foreach ($pagedAccounts as $acc):
-    $email  = $acc['email'] ?? ($acc['login'] . '@' . $acc['domain']);
-    $quota  = ($acc['quota'] ?? 0) == 0 ? 'Unlimited' : $acc['quota'] . ' MB';
-    $used   = round(($acc['diskused'] ?? 0) / (1024*1024), 1) . ' MB';
+<?php foreach ($groupedAccounts as $grp => $grpAccounts): ?>
+<div id="group-<?= htmlspecialchars($grp) ?>" class="account-group <?= $grp === $firstGrp ? '' : 'hidden' ?> grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <?php foreach ($grpAccounts as $acc):
+    $email = $acc['email'] ?? ($acc['login'] . '@' . $acc['domain']);
+    $quota = ($acc['quota'] ?? 0) == 0 ? 'Unlimited' : $acc['quota'] . ' MB';
+    $used  = round(($acc['diskused'] ?? 0) / (1024*1024), 1) . ' MB';
   ?>
-  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm hover:border-blue-400 dark:hover:border-blue-500 transition h-full relative group">
-    <div class="flex items-center justify-between h-full">
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm hover:border-blue-400 dark:hover:border-blue-500 transition relative group">
+    <a href="mailbox.php?account=<?= urlencode($email) ?>" class="flex items-center justify-between gap-3">
       <div class="min-w-0">
         <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"><?= htmlspecialchars($email) ?></p>
         <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-white"><?= $used ?></p>
@@ -141,7 +166,7 @@ include '../includes/layout.php';
       <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30 flex-shrink-0">
         <i data-lucide="mail" class="h-6 w-6 text-blue-600 dark:text-blue-400"></i>
       </div>
-    </div>
+    </a>
     <div class="absolute top-2 right-2 hidden group-hover:flex items-center gap-1 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-1">
       <a href="webmail_sso.php?email=<?= urlencode($email) ?>" target="_blank" class="inline-flex h-7 w-7 items-center justify-center rounded text-blue-500 hover:bg-blue-50" title="Open Webmail"><i data-lucide="external-link" class="h-3.5 w-3.5"></i></a>
       <button onclick="openPasswd('<?= htmlspecialchars($email) ?>')" class="inline-flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-gray-100" title="Change Password"><i data-lucide="key" class="h-3.5 w-3.5"></i></button>
@@ -150,46 +175,17 @@ include '../includes/layout.php';
   </div>
   <?php endforeach; ?>
 </div>
-
-<!-- Pagination -->
-<?php if ($totalPages > 1): ?>
-<div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
-  <span class="text-sm text-gray-500 dark:text-gray-400">Showing <?= $offset + 1 ?>–<?= min($offset + $perPage, $totalAccounts) ?> of <?= $totalAccounts ?> accounts</span>
-  <div class="flex items-center gap-1">
-    <?php if ($page > 1): ?>
-      <a href="?page=1" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="First"><i data-lucide="chevrons-left" class="h-4 w-4 text-gray-500"></i></a>
-      <a href="?page=<?= $page - 1 ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Previous"><i data-lucide="chevron-left" class="h-4 w-4 text-gray-500"></i></a>
-    <?php endif; ?>
-    <?php
-    $start = max(1, $page - 2);
-    $end = min($totalPages, $page + 2);
-    if ($start > 1) echo '<span class="h-8 w-8 flex items-center justify-center text-gray-400">…</span>';
-    for ($i = $start; $i <= $end; $i++):
-    ?>
-      <?php if ($i === $page): ?>
-        <span class="h-8 w-8 rounded bg-blue-600 text-white text-sm font-medium flex items-center justify-center"><?= $i ?></span>
-      <?php else: ?>
-        <a href="?page=<?= $i ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600"><?= $i ?></a>
-      <?php endif; ?>
-    <?php endfor; ?>
-    <?php if ($end < $totalPages) echo '<span class="h-8 w-8 flex items-center justify-center text-gray-400">…</span>'; ?>
-    <?php if ($page < $totalPages): ?>
-      <a href="?page=<?= $page + 1 ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Next"><i data-lucide="chevron-right" class="h-4 w-4 text-gray-500"></i></a>
-      <a href="?page=<?= $totalPages ?>" class="h-8 w-8 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-600" title="Last"><i data-lucide="chevrons-right" class="h-4 w-4 text-gray-500"></i></a>
-    <?php endif; ?>
-  </div>
-</div>
-<?php endif; ?>
+<?php endforeach; ?>
 
 <!-- Create Modal -->
 <div id="modal-create-email" class="hidden fixed inset-0 z-50 flex items-center justify-center">
-  <div class="absolute inset-0 bg-black/60" onclick="closeCreateModal()"></div>
-  <div class="relative w-full max-w-md rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl mx-4">
+  <div class="fixed inset-0 bg-black/70" onclick="closeCreateModal()"></div>
+  <div class="relative z-50 w-full max-w-md rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl mx-4">
     <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-t-xl">
       <h3 class="text-base font-semibold text-gray-900 dark:text-white">Create Email Account</h3>
       <button onclick="closeCreateModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="h-5 w-5"></i></button>
     </div>
-    <form method="POST" id="form-create-email" class="p-5 space-y-3" onsubmit="return validateCreateForm()" autocomplete="off">
+    <form method="POST" id="form-create-email" class="px-5 pt-2 pb-5 space-y-3" onsubmit="return validateCreateForm()" autocomplete="off">
       <input type="hidden" name="action" value="create" />
       <div>
         <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
@@ -203,7 +199,7 @@ include '../includes/layout.php';
       </div>
       <div>
         <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-        <input type="password" id="create-password" name="password" placeholder="Enter password" autocomplete="new-password" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
+        <input type="text" id="create-password" name="password" placeholder="Enter password" autocomplete="off" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
         <div class="mt-1">
           <div class="flex items-center gap-2">
             <div class="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
@@ -225,7 +221,7 @@ include '../includes/layout.php';
           </div>
         </div>
       </div>
-      <div class="flex justify-end gap-2 pt-1">
+      <div class="flex justify-between pt-1">
         <button type="button" onclick="closeCreateModal()" class="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">Cancel</button>
         <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create Account</button>
       </div>
@@ -234,22 +230,33 @@ include '../includes/layout.php';
 </div>
 
 <!-- Change Password Modal -->
-<div id="modal-passwd" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-  <div class="w-full max-w-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl">
-    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+<div id="modal-passwd" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+  <div class="fixed inset-0 bg-black/70" onclick="closePasswdModal()"></div>
+  <div class="relative z-50 w-full max-w-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl mx-4">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-t-xl">
       <h3 class="text-base font-semibold text-gray-900 dark:text-white">Change Password</h3>
-      <button onclick="document.getElementById('modal-passwd').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="h-5 w-5"></i></button>
+      <button onclick="closePasswdModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="h-5 w-5"></i></button>
     </div>
-    <form method="POST" class="p-6 space-y-4">
+    <form method="POST" id="form-passwd" class="px-5 pt-2 pb-5 space-y-3" onsubmit="return validatePasswdForm()" autocomplete="off">
       <input type="hidden" name="action" value="passwd" />
       <input type="hidden" name="email" id="passwd-email" />
       <p class="text-sm text-gray-600 dark:text-gray-400">Account: <strong id="passwd-label" class="text-gray-900 dark:text-white"></strong></p>
       <div>
-        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">New Password</label>
-        <input type="password" name="password" placeholder="New password" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
+        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New Password</label>
+        <input type="text" id="passwd-password" name="password" placeholder="Enter new password" autocomplete="off" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
+        <div class="mt-1">
+          <div class="flex items-center gap-2">
+            <div class="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+              <div id="passwd-strength-bar" class="h-full w-0 transition-all duration-300"></div>
+            </div>
+            <span id="passwd-strength-text" class="text-xs text-gray-400 w-12 text-right"></span>
+          </div>
+          <button type="button" onclick="generatePasswd()" class="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">Generate strong password</button>
+        </div>
+        <p id="passwd-error" class="mt-1 text-xs text-red-500 hidden"></p>
       </div>
-      <div class="flex justify-end gap-2">
-        <button type="button" onclick="document.getElementById('modal-passwd').classList.add('hidden')" class="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">Cancel</button>
+      <div class="flex justify-between pt-1">
+        <button type="button" onclick="closePasswdModal()" class="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">Cancel</button>
         <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Update</button>
       </div>
     </form>
@@ -261,8 +268,9 @@ include '../includes/layout.php';
   <input type="hidden" name="action" value="delete" />
   <input type="hidden" name="email" id="delete-email" />
 </form>
-<div id="modal-delete" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-  <div class="w-full max-w-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl p-6">
+<div id="modal-delete" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+  <div class="fixed inset-0 bg-black/70" onclick="document.getElementById('modal-delete').classList.add('hidden')"></div>
+  <div class="relative z-50 w-full max-w-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl p-6 mx-4">
     <div class="flex items-center gap-3 mb-4">
       <div class="flex h-10 w-10 items-center justify-center rounded-full bg-red-100"><i data-lucide="trash-2" class="h-5 w-5 text-red-600"></i></div>
       <div><h3 class="text-base font-semibold text-gray-900 dark:text-white">Delete Email Account</h3><p class="text-sm text-gray-500">This cannot be undone.</p></div>
@@ -276,8 +284,20 @@ include '../includes/layout.php';
 </div>
 
 <script>
+function switchGroup(grp) {
+    document.querySelectorAll('.account-group').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.group-tab').forEach(btn => {
+        btn.classList.remove('bg-blue-600','text-white','border-blue-600');
+        btn.classList.add('bg-white','dark:bg-gray-800','text-gray-600','dark:text-gray-300','border-gray-200','dark:border-gray-700');
+        btn.querySelector('span').className = 'rounded-full px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400';
+    });
+    document.getElementById('group-' + grp).classList.remove('hidden');
+    const tab = document.getElementById('tab-' + grp);
+    tab.classList.add('bg-blue-600','text-white','border-blue-600');
+    tab.classList.remove('bg-white','dark:bg-gray-800','text-gray-600','dark:text-gray-300','border-gray-200','dark:border-gray-700');
+    tab.querySelector('span').className = 'rounded-full px-1.5 py-0.5 text-xs bg-blue-500 text-white';
+}
 function confirmDelete(email) {
-  document.getElementById('delete-target').textContent = email;
   document.getElementById('delete-email').value = email;
   document.getElementById('modal-delete').classList.remove('hidden');
 }
@@ -351,8 +371,50 @@ function validateCreateForm() {
   }
   return valid;
 }
-document.getElementById('create-password').addEventListener('input', function() {
-  checkPasswordStrength(this.value);
+function closePasswdModal() {
+  document.getElementById('modal-passwd').classList.add('hidden');
+  document.getElementById('form-passwd').reset();
+  document.getElementById('passwd-strength-bar').style.width = '0%';
+  document.getElementById('passwd-strength-text').textContent = '';
+  document.getElementById('passwd-error').classList.add('hidden');
+}
+function generatePasswd() {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let pass = '';
+  for (let i = 0; i < 16; i++) pass += chars.charAt(Math.floor(Math.random() * chars.length));
+  document.getElementById('passwd-password').value = pass;
+  checkPasswdStrength(pass);
+}
+function checkPasswdStrength(password) {
+  let score = 0;
+  if (password.length >= 8) score++;
+  if (password.length >= 12) score++;
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
+  if (/\d/.test(password)) score++;
+  if (/[^a-zA-Z0-9]/.test(password)) score++;
+  const bar = document.getElementById('passwd-strength-bar');
+  const text = document.getElementById('passwd-strength-text');
+  const colors = ['bg-red-500','bg-orange-500','bg-yellow-500','bg-blue-500','bg-green-500'];
+  const labels = ['Very Weak','Weak','Fair','Good','Strong'];
+  const pct = Math.min(100, (score / 5) * 100);
+  bar.style.width = pct + '%';
+  bar.className = 'h-full transition-all duration-300 ' + colors[Math.min(score, 4)];
+  text.textContent = labels[Math.min(score, 4)];
+  text.className = 'text-xs w-12 text-right ' + (score < 2 ? 'text-red-500' : score < 4 ? 'text-yellow-600' : 'text-green-600');
+}
+function validatePasswdForm() {
+  const password = document.getElementById('passwd-password').value;
+  const passwordError = document.getElementById('passwd-error');
+  passwordError.classList.add('hidden');
+  if (password.length < 8) {
+    passwordError.textContent = 'Password must be at least 8 characters.';
+    passwordError.classList.remove('hidden');
+    return false;
+  }
+  return true;
+}
+document.getElementById('passwd-password').addEventListener('input', function() {
+  checkPasswdStrength(this.value);
 });
 </script>
 
