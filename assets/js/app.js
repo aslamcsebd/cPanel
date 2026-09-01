@@ -68,4 +68,16 @@ function toggleTheme() {
 document.addEventListener('DOMContentLoaded', function() {
   const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
   updateThemeIcon(theme);
+
+  // Restore sidebar scroll position
+  var nav = document.querySelector('#sidebar nav');
+  if (nav) {
+    var saved = sessionStorage.getItem('sidebarScroll');
+    if (saved) nav.scrollTop = parseInt(saved, 10);
+
+    // Save scroll position before any navigation
+    nav.addEventListener('scroll', function() {
+      sessionStorage.setItem('sidebarScroll', nav.scrollTop);
+    });
+  }
 });
