@@ -98,3 +98,7 @@ A PHP-based cPanel-like control panel application with web hosting management fe
 
 ## License
 Proprietary
+
+
+#CI/CD: common SSH concept:
+- Host → Username → Key → Key's Passphrase
