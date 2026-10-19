@@ -5,7 +5,8 @@ requireLogin();
 require_once '../api/CpanelClient.php';
 
 $client = new CpanelClient();
-$msg = $err = '';
+$msg = ($_GET['msg'] ?? '') === 'created' ? 'Email account created.' : '';
+$err = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -16,15 +17,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'password' => $_POST['password'] ?? '',
             'quota'    => (int)($_POST['quota'] ?? 0),
         ]);
-        if ($r['success']) {
-            // Save password to config so mailbox works without reset
+        $cpanelErrors = $r['errors'] ?? [];
+        if ($r['success'] && empty($cpanelErrors)) {
             $fullEmail = trim($_POST['email'] ?? '') . '@' . trim($_POST['domain'] ?? '');
             $config = readConfig();
             $config['email_passwords'][$fullEmail] = $_POST['password'];
             writeConfig($config);
-            $msg = 'Email account created.';
+            header('Location: accounts.php?msg=created'); exit;
         } else {
-            $err = $r['errors'][0] ?? 'Failed.';
+            $err = !empty($cpanelErrors) ? implode(' ', $cpanelErrors) : 'Failed to create account.';
         }
     } elseif ($action === 'delete') {
         $r = $client->call('Email', 'delete_pop', ['email' => $_POST['email'] ?? '']);
@@ -98,31 +99,22 @@ include '../includes/layout.php';
 
 <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
   <div>
-    <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Email Accounts</h1>
+    <div class="flex items-center gap-2">
+      <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Email Accounts</h1>
+    </div>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage email accounts across your domains</p>
   </div>
-  <button onclick="document.getElementById('modal-create-email').classList.remove('hidden')" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
+  <button onclick="openCreateModal()" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
     <i data-lucide="plus" class="h-4 w-4"></i> Create Account
   </button>
 </div>
 
-<?php if ($msg): ?><div class="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-400 flex items-center gap-2"><i data-lucide="check-circle" class="h-4 w-4"></i> <?= htmlspecialchars($msg) ?></div><?php endif; ?>
-<?php if ($err): ?><div class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400 flex items-center gap-2"><i data-lucide="alert-circle" class="h-4 w-4"></i> <?= htmlspecialchars($err) ?></div><?php endif; ?>
+<?php if ($msg): ?><div id="flash-msg" class="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-400 flex items-center gap-2"><i data-lucide="check-circle" class="h-4 w-4"></i> <?= htmlspecialchars($msg) ?></div><script>setTimeout(function(){var e=document.getElementById('flash-msg');if(e)e.remove();history.replaceState(null,'',location.pathname);},3000);</script><?php endif; ?>
+<?php if ($err): ?><div id="flash-err" class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400 flex items-center gap-2"><i data-lucide="alert-circle" class="h-4 w-4"></i> <?= htmlspecialchars($err) ?></div><script>setTimeout(function(){var e=document.getElementById('flash-err');if(e)e.remove();},3000);</script><?php endif; ?>
 
 <!-- Stats -->
-<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-<?= ($totalUsedMB > 0 ? ($largestEmail ? 3 : 2) : 1) ?>">
-  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
-    <div class="flex items-center justify-between h-full">
-      <div>
-        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Accounts</p>
-        <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white"><?= $totalAccounts ?></p>
-        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500"><?= $unlimitedCount ?> unlimited &middot; <?= $totalAccounts - $unlimitedCount ?> with quota</p>
-      </div>
-      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30">
-        <i data-lucide="mail" class="h-6 w-6 text-blue-600 dark:text-blue-400"></i>
-      </div>
-    </div>
-  </div>
+<?php if ($totalUsedMB > 0 || $largestEmail): ?>
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-<?= ($largestEmail ? 2 : 1) ?>">
   <?php if ($totalUsedMB > 0): ?>
   <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm h-full">
     <div class="flex items-center justify-between h-full">
@@ -159,9 +151,11 @@ include '../includes/layout.php';
   </div>
   <?php endif; ?>
 </div>
+<?php endif; ?>
 
 <!-- Group Tabs -->
-<div class="flex flex-wrap gap-2">
+<div class="flex flex-wrap items-center justify-between gap-2">
+  <div class="flex flex-wrap gap-2">
   <?php $firstGrp = array_key_first($groupedAccounts); ?>
   <?php foreach ($groupedAccounts as $grp => $grpAccounts): ?>
   <button onclick="switchGroup('<?= htmlspecialchars($grp) ?>')" id="tab-<?= htmlspecialchars($grp) ?>"
@@ -171,6 +165,8 @@ include '../includes/layout.php';
     <span class="rounded-full px-1.5 py-0.5 text-xs <?= $grp === $firstGrp ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' ?>"><?= count($grpAccounts) ?></span>
   </button>
   <?php endforeach; ?>
+  </div>
+  <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300">Total Accounts <span class="rounded-full px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"><?= $totalAccounts ?></span></span>
 </div>
 
 <!-- Accounts Cards -->
@@ -181,15 +177,14 @@ include '../includes/layout.php';
     $quota = ($acc['quota'] ?? 0) == 0 ? 'Unlimited' : $acc['quota'] . ' MB';
     $used  = round(($acc['diskused'] ?? 0) / (1024*1024), 1) . ' MB';
   ?>
-  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm hover:border-blue-400 dark:hover:border-blue-500 transition relative group">
+  <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 shadow-sm hover:border-blue-400 dark:hover:border-blue-500 transition relative group">
     <a href="mailbox.php?account=<?= urlencode($email) ?>" class="flex items-center justify-between gap-3">
       <div class="min-w-0">
-        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"><?= htmlspecialchars($email) ?></p>
-        <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-white"><?= $used ?></p>
-        <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">Quota: <?= $quota ?></p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white truncate"><?= htmlspecialchars($email) ?></p>
+        <p class="mt-0.5 text-sm font-medium text-gray-500 dark:text-gray-400"><?= $used ?></p>
       </div>
-      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30 flex-shrink-0">
-        <i data-lucide="mail" class="h-6 w-6 text-blue-600 dark:text-blue-400"></i>
+      <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30 flex-shrink-0">
+        <i data-lucide="mail" class="h-5 w-5 text-blue-600 dark:text-blue-400"></i>
       </div>
     </a>
     <div class="absolute top-2 right-2 hidden group-hover:flex items-center gap-1 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-1">
@@ -210,43 +205,48 @@ include '../includes/layout.php';
       <h3 class="text-base font-semibold text-gray-900 dark:text-white">Create Email Account</h3>
       <button onclick="closeCreateModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="h-5 w-5"></i></button>
     </div>
-    <form method="POST" id="form-create-email" class="px-5 pt-2 pb-5 space-y-3" onsubmit="return validateCreateForm()" autocomplete="off">
+    <form method="POST" id="form-create-email" class="px-5 pb-3 space-y-3" onsubmit="return validateCreateForm()" autocomplete="off">
       <input type="hidden" name="action" value="create" />
       <div>
         <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
         <div class="flex rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400">
-          <input type="text" id="create-username" name="email" placeholder="username" autocomplete="off" class="h-10 flex-1 bg-transparent px-3 text-sm outline-none min-w-0" required />
-          <select name="domain" id="create-domain-select" class="h-10 border-l border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-2 text-sm outline-none rounded-r-lg max-w-[160px]">
+          <input type="text" id="create-username" name="email" placeholder="username" autocomplete="off" class="h-10 flex-1 bg-transparent px-3 text-sm outline-none min-w-0" required oninput="validateUsername(this.value)" />
+          <select name="domain" id="create-domain-select" class="h-10 border-l border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-2 text-sm outline-none max-w-[160px]">
             <?php foreach ($domains as $d): ?><option value="<?= htmlspecialchars($d) ?>">@<?= htmlspecialchars($d) ?></option><?php endforeach; ?>
           </select>
+          <button type="button" onclick="copyEmail(this)" class="px-2 border-l border-gray-200 dark:border-gray-600 text-xs text-gray-400 hover:text-blue-500 rounded-r-lg transition-colors" title="Copy email">Copy</button>
         </div>
         <p id="username-error" class="mt-1 text-xs text-red-500 hidden"></p>
       </div>
       <div>
         <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-        <input type="text" id="create-password" name="password" placeholder="Enter password" autocomplete="off" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
+        <div class="flex rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400">
+          <input type="text" id="create-password" name="password" placeholder="Enter password" autocomplete="off" class="h-10 flex-1 bg-transparent px-3 text-sm outline-none min-w-0" required />
+          <button type="button" onclick="copyPassword('create-password', this)" class="px-2 border-l border-gray-200 dark:border-gray-600 text-xs text-gray-400 hover:text-blue-500 rounded-r-lg transition-colors" title="Copy password">Copy</button>
+        </div>
         <div class="mt-1">
           <div class="flex items-center gap-2">
-            <div class="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div class="flex-1 h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
               <div id="password-strength-bar" class="h-full w-0 transition-all duration-300"></div>
             </div>
             <span id="password-strength-text" class="text-xs text-gray-400 w-12 text-right"></span>
           </div>
           <button type="button" onclick="generatePassword()" class="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">Generate strong password</button>
         </div>
-        <p id="password-error" class="mt-1 text-xs text-red-500 hidden"></p>
-      </div>
-      <div>
-        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Storage Quota</label>
-        <div class="flex items-center gap-3">
-          <input type="range" id="quota-slider" min="0" max="10240" step="100" value="1000" class="flex-1 h-2 rounded-lg appearance-none bg-gray-200 dark:bg-gray-700 cursor-pointer accent-blue-600" oninput="updateQuota(this.value)" />
-          <div class="flex items-center gap-1">
-            <input type="number" id="quota-input" name="quota" value="1000" min="0" step="100" class="h-9 w-20 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 text-sm text-center outline-none focus:border-blue-400" oninput="updateQuotaSlider(this.value)" />
-            <span class="text-sm text-gray-500">MB</span>
+        <!-- Password rules checklist -->
+        <div class="mt-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 px-3 py-2">
+          <div class="grid grid-cols-2 gap-x-2 gap-y-1">
+          <div id="rule-length"  class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> At least 8 characters</div>
+          <div id="rule-upper"   class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> One uppercase (A–Z)</div>
+          <div id="rule-lower"   class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> One lowercase (a–z)</div>
+          <div id="rule-number"  class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> One number (0–9)</div>
+          <div id="rule-special" class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> One special (!@#$%^&*)</div>
           </div>
         </div>
+        <p id="password-error" class="mt-1 text-xs text-red-500 hidden"></p>
       </div>
-      <div class="flex justify-between pt-1">
+      <input type="hidden" name="quota" value="50" />
+      <div class="flex justify-between pt-3 border-t border-gray-100 dark:border-gray-700 -mx-5 px-5">
         <button type="button" onclick="closeCreateModal()" class="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">Cancel</button>
         <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create Account</button>
       </div>
@@ -268,19 +268,32 @@ include '../includes/layout.php';
       <p class="text-sm text-gray-600 dark:text-gray-400">Account: <strong id="passwd-label" class="text-gray-900 dark:text-white"></strong></p>
       <div>
         <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">New Password</label>
-        <input type="text" id="passwd-password" name="password" placeholder="Enter new password" autocomplete="off" class="h-10 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-sm outline-none focus:border-blue-400" required />
+        <div class="flex rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400">
+          <input type="text" id="passwd-password" name="password" placeholder="Enter new password" autocomplete="off" class="h-10 flex-1 bg-transparent px-3 text-sm outline-none min-w-0" required />
+          <button type="button" onclick="copyPassword('passwd-password', this)" class="px-2 border-l border-gray-200 dark:border-gray-600 text-xs text-gray-400 hover:text-blue-500 rounded-r-lg transition-colors" title="Copy password">Copy</button>
+        </div>
         <div class="mt-1">
           <div class="flex items-center gap-2">
-            <div class="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div class="flex-1 h-0.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
               <div id="passwd-strength-bar" class="h-full w-0 transition-all duration-300"></div>
             </div>
             <span id="passwd-strength-text" class="text-xs text-gray-400 w-12 text-right"></span>
           </div>
           <button type="button" onclick="generatePasswd()" class="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">Generate strong password</button>
         </div>
+        <!-- Password rules checklist -->
+        <div class="mt-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 px-3 py-2">
+          <div class="grid grid-cols-2 gap-x-2 gap-y-1">
+          <div id="prule-length"  class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> At least 8 characters</div>
+          <div id="prule-upper"   class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> One uppercase (A–Z)</div>
+          <div id="prule-lower"   class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> One lowercase (a–z)</div>
+          <div id="prule-number"  class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> One number (0–9)</div>
+          <div id="prule-special" class="flex items-center gap-1.5 text-xs text-gray-400"><span class="rule-dot"><svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg></span> One special (!@#$%^&*)</div>
+          </div>
+        </div>
         <p id="passwd-error" class="mt-1 text-xs text-red-500 hidden"></p>
       </div>
-      <div class="flex justify-between pt-1">
+      <div class="flex justify-between pt-3 border-t border-gray-100 dark:border-gray-700 -mx-5 px-5">
         <button type="button" onclick="closePasswdModal()" class="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">Cancel</button>
         <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Update</button>
       </div>
@@ -309,6 +322,74 @@ include '../includes/layout.php';
 </div>
 
 <script>
+function copyEmail(btn) {
+  const user = document.getElementById('create-username').value;
+  const domain = document.getElementById('create-domain-select').value;
+  if (!user) return;
+  navigator.clipboard.writeText(user + '@' + domain).then(() => {
+    btn.style.backgroundColor = '#22c55e';
+    btn.style.color = '#fff';
+    setTimeout(() => { btn.style.backgroundColor = ''; btn.style.color = ''; }, 1500);
+  });
+}
+ function copyPassword(id, btn) {
+  const val = document.getElementById(id).value;
+  if (!val) return;
+  navigator.clipboard.writeText(val).then(() => {
+    btn.style.backgroundColor = '#22c55e';
+    btn.style.color = '#fff';
+    setTimeout(() => { btn.style.backgroundColor = ''; btn.style.color = ''; }, 1500);
+  });
+}
+function validateUsername(val) {
+  const err = document.getElementById('username-error');
+  if (val.length > 0 && val.length < 3) {
+    err.textContent = 'Username must be at least 3 characters.';
+    err.classList.remove('hidden');
+  } else if (val.length >= 3 && !/^[a-zA-Z0-9._-]+$/.test(val)) {
+    err.textContent = 'Only letters, numbers, dots, hyphens, underscores allowed.';
+    err.classList.remove('hidden');
+  } else {
+    err.classList.add('hidden');
+  }
+}
+function checkRule(id, passed) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const dot = el.querySelector('.rule-dot');
+  if (passed) {
+    el.className = 'flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400';
+    dot.innerHTML = '<svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" fill="currentColor" opacity="0.2"/><path d="M3.5 6l1.8 1.8 3.2-3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  } else {
+    el.className = 'flex items-center gap-1.5 text-xs text-gray-400';
+    dot.innerHTML = '<svg class="h-3 w-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/></svg>';
+  }
+}
+function checkPasswordRules(password, prefix) {
+  checkRule(prefix+'-length',  password.length >= 8);
+  checkRule(prefix+'-upper',   /[A-Z]/.test(password));
+  checkRule(prefix+'-lower',   /[a-z]/.test(password));
+  checkRule(prefix+'-number',  /[0-9]/.test(password));
+  checkRule(prefix+'-special', /[^a-zA-Z0-9]/.test(password));
+}
+function isPasswordValid(password) {
+  return password.length >= 8;
+}
+function openCreateModal() {
+  const now = new Date();
+  const y  = now.getFullYear();
+  const mo = String(now.getMonth()+1).padStart(2,'0');
+  const d  = String(now.getDate()).padStart(2,'0');
+  const h  = String(now.getHours()).padStart(2,'0');
+  const mi = String(now.getMinutes()).padStart(2,'0');
+  const username = y+mo+d+h+mi;
+  document.getElementById('create-username').value = username;
+  // Auto password: Aa@ + last 5 digits of username
+  const pass = 'Aa@' + username;
+  document.getElementById('create-password').value = pass;
+  checkPasswordStrength(pass);
+  document.getElementById('modal-create-email').classList.remove('hidden');
+}
 function switchGroup(grp) {
     document.querySelectorAll('.account-group').forEach(el => el.classList.add('hidden'));
     document.querySelectorAll('.group-tab').forEach(btn => {
@@ -362,6 +443,7 @@ function checkPasswordStrength(password) {
   bar.className = 'h-full transition-all duration-300 ' + colors[Math.min(score, 4)];
   text.textContent = labels[Math.min(score, 4)];
   text.className = 'text-xs w-12 text-right ' + (score < 2 ? 'text-red-500' : score < 4 ? 'text-yellow-600' : 'text-green-600');
+  checkPasswordRules(password, 'rule');
 }
 function updateQuota(val) {
   document.getElementById('quota-input').value = val;
@@ -389,8 +471,8 @@ function validateCreateForm() {
     usernameError.classList.remove('hidden');
     valid = false;
   }
-  if (password.length < 8) {
-    passwordError.textContent = 'Password must be at least 8 characters.';
+  if (!isPasswordValid(password)) {
+    passwordError.textContent = 'Password does not meet all requirements above.';
     passwordError.classList.remove('hidden');
     valid = false;
   }
@@ -426,18 +508,22 @@ function checkPasswdStrength(password) {
   bar.className = 'h-full transition-all duration-300 ' + colors[Math.min(score, 4)];
   text.textContent = labels[Math.min(score, 4)];
   text.className = 'text-xs w-12 text-right ' + (score < 2 ? 'text-red-500' : score < 4 ? 'text-yellow-600' : 'text-green-600');
+  checkPasswordRules(password, 'prule');
 }
 function validatePasswdForm() {
   const password = document.getElementById('passwd-password').value;
   const passwordError = document.getElementById('passwd-error');
   passwordError.classList.add('hidden');
-  if (password.length < 8) {
-    passwordError.textContent = 'Password must be at least 8 characters.';
+  if (!isPasswordValid(password)) {
+    passwordError.textContent = 'Password does not meet all requirements above.';
     passwordError.classList.remove('hidden');
     return false;
   }
   return true;
 }
+document.getElementById('create-password').addEventListener('input', function() {
+  checkPasswordStrength(this.value);
+});
 document.getElementById('passwd-password').addEventListener('input', function() {
   checkPasswdStrength(this.value);
 });
