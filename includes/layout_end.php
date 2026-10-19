@@ -55,6 +55,11 @@
 
 <script>var APP_BASE = '<?= rtrim(str_replace($_SERVER['DOCUMENT_ROOT'], '', dirname(dirname(__FILE__))), '/') ?>';</script>
 <script src="<?= $basePath ?>assets/js/app.js"></script>
-<script>lucide.createIcons();</script>
+<script>
+  lucide.createIcons();
+  // Set correct icon AFTER lucide renders all icons
+  var _t = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  updateThemeIcon(_t);
+</script>
 </body>
 </html>

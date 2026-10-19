@@ -48,6 +48,39 @@ $sidebarCollapsed = readConfig()['app']['sidebar_collapsed'] ?? false;
     .sidebar-collapsed .sidebar-label { display: none; }
     .sidebar-collapsed nav a { justify-content: center; }
     .sidebar-collapsed .flex.items-center.gap-3.rounded-lg.px-3 { justify-content: center; }
+
+    /* Thin custom scrollbar for sidebar */
+    #sidebar nav::-webkit-scrollbar { width: 3px; }
+    #sidebar nav::-webkit-scrollbar-track { background: transparent; }
+    #sidebar nav::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+    #sidebar nav::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .dark #sidebar nav::-webkit-scrollbar-thumb { background: #334155; }
+    .dark #sidebar nav::-webkit-scrollbar-thumb:hover { background: #475569; }
+    #sidebar nav { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+    .dark #sidebar nav { scrollbar-color: #334155 transparent; }
+
+    @media (prefers-reduced-motion: no-preference) {
+      ::view-transition-old(root) {
+        animation: none;
+        display: none;
+      }
+      ::view-transition-new(root) {
+        animation: 600ms cubic-bezier(.76,0,.24,1) both vt-ltr;
+      }
+      @keyframes vt-ltr {
+        from { clip-path: inset(0 100% 0 0); }
+        to   { clip-path: inset(0 0% 0 0); }
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+    }
+
+    #theme-toggle i {
+      display: inline-block;
+      transition: transform 300ms ease !important;
+    }
+    #theme-toggle:active i { transform: scale(0.8); }
   </style>
 </head>
 <body class="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans text-gray-900 dark:text-gray-100">
@@ -109,7 +142,7 @@ $sidebarCollapsed = readConfig()['app']['sidebar_collapsed'] ?? false;
           <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span> Setup Required
         </span>
       <?php endif; ?>
-      <button id="theme-toggle" onclick="toggleTheme()" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700">
+      <button id="theme-toggle" onclick="toggleTheme(event)" class="inline-flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" title="Switch theme">
         <i data-lucide="moon" class="h-5 w-5"></i>
       </button>
     </div>
