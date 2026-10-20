@@ -378,6 +378,14 @@ include '../includes/layout.php';
          class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
       </a>
+      <a href="?account=<?= urlencode($currentEmail) ?>&folder=<?= urlencode($folder) ?>&msg=<?= $viewSeq ?>&page=<?= $page ?>"
+         class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" title="Refresh">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+      </a>
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-0.5"></div>
       <!-- Reply -->
       <button onclick="openReply('<?= htmlspecialchars(addslashes($openMessage['from'])) ?>','<?= htmlspecialchars(addslashes($openMessage['subject'])) ?>')" class="inline-flex items-center gap-1.5 h-8 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 text-xs font-medium text-white">

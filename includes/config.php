@@ -72,6 +72,7 @@ function getSidebarItems(): array {
         ['id'=>'email-forwarders','section'=>'EMAIL','label'=>'Forwarders','icon'=>'forward','href'=>'email/forwarders.php','enabled'=>true],
         ['id'=>'email-autoresponders','section'=>'EMAIL','label'=>'Auto Responders','icon'=>'bot','href'=>'email/autoresponders.php','enabled'=>true],
         ['id'=>'email-filters','section'=>'EMAIL','label'=>'Filters','icon'=>'filter','href'=>'email/filters.php','enabled'=>true],
+        ['id'=>'whatsapp-notify','section'=>'EMAIL','label'=>'WhatsApp Alerts','icon'=>'message-circle','href'=>'email/whatsapp.php','enabled'=>true],
         ['id'=>'email-mx','section'=>'EMAIL','label'=>'MX Records','icon'=>'globe','href'=>'email/mx.php','enabled'=>true],
         ['id'=>'email-dkim','section'=>'EMAIL','label'=>'DKIM','icon'=>'shield-check','href'=>'email/dkim.php','enabled'=>true],
         ['id'=>'email-dmarc','section'=>'EMAIL','label'=>'DMARC','icon'=>'shield','href'=>'email/dmarc.php','enabled'=>true],
